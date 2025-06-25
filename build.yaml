@@ -1,0 +1,16 @@
+---
+name: "Encora Plugin"
+guid: "e0e9f5b9-5687-4a39-8e67-86c3399f9176"
+version: "1.0.0.1"
+targetAbi: "10.9.0.0"
+framework: "net8.0"
+overview: "Fetches metadata from Encora.it"
+description: >
+  Fetches theatrical performance metadata from https://encora.it
+  You must provide your own API key
+category: "General"
+owner: "pekempy"
+artifacts:
+- "Jellyfin.Plugin.Encora.dll"
+changelog: >
+  changelog

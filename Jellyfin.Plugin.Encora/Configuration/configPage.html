@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Encora</title>
+</head>
+<body>
+    <div id="EncoraConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
+        <div data-role="content">
+            <div class="content-primary">
+                <form id="EncoraConfigForm" class="configForm">
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="EncoraAPIKey">EncoraAPIKey</label>
+                        <input id="EncoraAPIKey" name="Encora API Key" type="text" is="emby-input" />
+                        <div class="fieldDescription">Your API Key for Encora</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="StageMediaAPIKey">StageMedia API Key</label>
+                        <input id="StageMediaAPIKey" name="StageMediaAPIKey" type="text" is="emby-input" />
+                        <div class="fieldDescription">Your API Key for StageMedia</div>
+                    </div>
+                    <div class="checkboxContainer checkboxContainer-withDescription">
+                        <label class="emby-checkbox-label">
+                            <input id="AddMasterDirector" name="AddMasterDirector" type="checkbox" is="emby-checkbox" />
+                            <span>Add master as director</span>
+                        </label>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="TitleFormat">Title format</label>
+                        <input id="TitleFormat" name="TitleFormat" type="text" is="emby-input" />
+                        <div class="fieldDescription">Variables: {show}, {date}, {date_usa}, {date_iso}, {date_numeric}, {tour}, {master}</div>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="DateReplaceChar">Missing Date Replace Character</label>
+                        <input id="DateReplaceChar" name="DateReplaceChar" type="text" is="emby-input" />
+                        <div class="fieldDescription">For dates missing the day / month, which character should be used to replace (e.g. '2024-11-xx')</div>
+                    </div>
+                    <div>
+                        <button is="emby-button" type="button" class="raised button-submit block" id="EncoraSaveButton"><span>Save</span></button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <script type="text/javascript">
+            var EncoraConfig = {
+                pluginUniqueId: 'e0e9f5b9-5687-4a39-8e67-86c3399f9176'
+            };
+
+            window.addEventListener("pageshow", function () {
+                ApiClient.getPluginConfiguration(EncoraConfig.pluginUniqueId).then(function (config) {
+                    console.log("🛠️ Loaded config", config);
+                    document.getElementById("EncoraAPIKey").value = config.EncoraAPIKey || '';
+                    document.getElementById("StageMediaAPIKey").value = config.StageMediaAPIKey || '';
+                    document.getElementById("AddMasterDirector").checked = config.AddMasterDirector || false;
+                    document.getElementById("TitleFormat").value = config.TitleFormat || '';
+                    document.getElementById("DateReplaceChar").value = config.DateReplaceChar || '';
+                });
+
+                const saveBtn = document.getElementById("EncoraSaveButton");
+                saveBtn.addEventListener("click", function () {
+                    Dashboard.showLoadingMsg();
+
+                    ApiClient.getPluginConfiguration(EncoraConfig.pluginUniqueId).then(function (config) {
+                        config.EncoraAPIKey = document.getElementById("EncoraAPIKey").value;
+                        config.StageMediaAPIKey = document.getElementById("StageMediaAPIKey").value;
+                        config.AddMasterDirector = document.getElementById("AddMasterDirector").checked;
+                        config.TitleFormat = document.getElementById("TitleFormat").value;
+                        config.DateReplaceChar = document.getElementById("DateReplaceChar").value;
+
+                        ApiClient.updatePluginConfiguration(EncoraConfig.pluginUniqueId, config).then(function (result) {
+                            Dashboard.processPluginConfigurationUpdateResult(result);
+                        });
+                    });
+                });
+            });
+        </script>
+
+    </div>
+</body>
+</html>
