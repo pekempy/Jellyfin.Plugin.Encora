@@ -105,6 +105,45 @@ namespace Jellyfin.Plugin.Encora.Providers
                     _logger.LogInformation("[Encora] ✅ Successfully fetched metadata from Encora for ID {EncoraId}", encoraId);
                     _logger.LogInformation("[Encora] Show: {Show}, Tour: {Tour}, Date: {Date}, Master: {Master}", recording.Show, recording.Tour, recording.Date?.FullDate, recording.Master);
 
+                    var movieDir = System.IO.Path.GetDirectoryName(info.Path);
+                    var posterPath = !string.IsNullOrWhiteSpace(movieDir)
+                        ? System.IO.Path.Combine(movieDir, "folder.jpg")
+                        : null;
+                    // Fetch StageMedia poster and save as local poster.jpg
+                    if (!string.IsNullOrWhiteSpace(posterPath) && !System.IO.File.Exists(posterPath))
+                    {
+                        // Only run this block if folder.jpg does NOT exist
+                        try
+                        {
+                            var stageMediaApiKey = Plugin.Instance?.Configuration?.StageMediaAPIKey;
+                            if (!string.IsNullOrWhiteSpace(stageMediaApiKey) && recording.Metadata?.ShowId > 0)
+                            {
+                                var stageMediaUrl = $"https://stagemedia.me/api/images?show_id={recording.Metadata.ShowId}&actor_ids=1";
+                                var stageMediaClient = _httpClientFactory.CreateClient();
+                                stageMediaClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", stageMediaApiKey);
+                                stageMediaClient.DefaultRequestHeaders.UserAgent.ParseAdd("JellyfinPlugin/1.0");
+
+                                var stageMediaResponse = await stageMediaClient.GetAsync(stageMediaUrl, cancellationToken).ConfigureAwait(false);
+                                stageMediaResponse.EnsureSuccessStatusCode();
+                                var stageMediaJson = await stageMediaResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                                var images = JsonSerializer.Deserialize<StageMediaImages>(stageMediaJson);
+
+                                if (images?.Posters != null && images.Posters.Count > 0)
+                                {
+                                    var posterUrl = images.Posters[0];
+                                    var posterResponse = await stageMediaClient.GetAsync(posterUrl, cancellationToken).ConfigureAwait(false);
+                                    posterResponse.EnsureSuccessStatusCode();
+                                    var posterBytes = await posterResponse.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+                                    await System.IO.File.WriteAllBytesAsync(posterPath, posterBytes, cancellationToken).ConfigureAwait(false);
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "[Encora] Could not download and save StageMedia poster for ShowId {ShowId}", recording.Metadata?.ShowId);
+                        }
+                    }
+
                     var titleFormat = Plugin.Instance?.Configuration?.TitleFormat ?? "{show}";
 
                     var movie = new Movie

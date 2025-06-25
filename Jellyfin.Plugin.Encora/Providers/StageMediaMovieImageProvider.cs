@@ -96,6 +96,8 @@ namespace Jellyfin.Plugin.Encora.Providers
                 }
             }
 
+            _logger.LogDebug("[Encora] [StageMedia] Posters: {Posters}", string.Join(", ", remoteImages.Select(i => i.Url)));
+
             return remoteImages;
         }
 
