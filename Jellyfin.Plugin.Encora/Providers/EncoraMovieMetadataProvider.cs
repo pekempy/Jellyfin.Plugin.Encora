@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -116,53 +117,11 @@ namespace Jellyfin.Plugin.Encora.Providers
                         SortName = recording.Show
                     };
 
-                    // StageMedia API request
-                    var showId = recording.Metadata?.ShowId;
-                    var actorIds = recording.Cast?
-                        .Where(c => c.Performer?.Id != null)
-                        .Select(c => c.Performer!.Id.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                        .ToArray() ?? Array.Empty<string>();
-                    var actorIdsParam = string.Join(",", actorIds);
-                    var stageMediaApiUrl = $"https://stagemedia.me/api/images?show_id={showId}&actor_ids={actorIdsParam}";
-
-                    _logger.LogInformation("[Encora] StageMedia request: {StageMediaApiUrl}", stageMediaApiUrl);
-
-                    StageMediaImages? images = null;
-                    try
-                    {
-                        var stageMediaApiKey = Plugin.Instance?.Configuration?.StageMediaAPIKey;
-                        var mediaDbClient = _httpClientFactory.CreateClient();
-                        mediaDbClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", stageMediaApiKey);
-                        mediaDbClient.DefaultRequestHeaders.UserAgent.ParseAdd("JellyfinPlugin/1.0");
-
-                        var mediaDbResponse = await mediaDbClient.GetAsync(stageMediaApiUrl, cancellationToken).ConfigureAwait(false);
-
-                        _logger.LogInformation("[Encora] StageMedia response status: {StatusCode}", mediaDbResponse.StatusCode);
-                        _logger.LogInformation("[Encora] StageMedia response Json: {Json}", await mediaDbResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
-
-                        mediaDbResponse.EnsureSuccessStatusCode();
-                        var mediaDbJson = await mediaDbResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                        images = JsonSerializer.Deserialize<StageMediaImages>(mediaDbJson, JsonOptions);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(ex, "[Encora] Failed to fetch images from StageMedia API.");
-                    }
-
-                    // Prepare headshot dictionary for cast mapping
-                    Dictionary<string, string>? headshots = null;
-                    if (images?.Performers != null)
-                    {
-                        headshots = images.Performers
-                            .Where(p => !string.IsNullOrWhiteSpace(p.Url))
-                            .ToDictionary(
-                                p => p.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                                p => p.Url!);
-                    }
-
                     // Set genres from metadata
                     if (recording.Metadata != null)
                     {
+                        movie.SetProviderId("StageMediaShowId", recording.Metadata.ShowId.ToString(CultureInfo.InvariantCulture));
+
                         if (!string.IsNullOrWhiteSpace(recording.Metadata.RecordingType))
                         {
                             movie.AddGenre(System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(recording.Metadata.RecordingType));
@@ -214,21 +173,12 @@ namespace Jellyfin.Plugin.Encora.Providers
                         movie.AddStudio(recording.Metadata.Venue);
                     }
 
-                    // Set posters from StageMedia API response
-                    if (images?.Posters != null)
-                    {
-                        foreach (var posterUrl in images.Posters.Where(p => !string.IsNullOrWhiteSpace(p)))
-                        {
-                            result.RemoteImages.Add((posterUrl, ImageType.Primary));
-                        }
-                    }
-
                     result.HasMetadata = true;
                     result.Item = movie;
 
                     if (recording.Cast != null)
                     {
-                        EncoraCastMember.MapCastToResult(result, recording.Cast, headshots);
+                        EncoraCastMember.MapCastToResult(result, recording.Cast);
                     }
                 }
             }

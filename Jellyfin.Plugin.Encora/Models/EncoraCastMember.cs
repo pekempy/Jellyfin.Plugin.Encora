@@ -42,8 +42,7 @@ namespace Jellyfin.Plugin.Encora.Models
         /// </summary>
         /// <param name="result">The metadata result to which the cast members will be added.</param>
         /// <param name="cast">The collection of cast members to map.</param>
-        /// <param name="headshots">The collection of cast members headshots to map.</param>
-        public static void MapCastToResult(MetadataResult<Movie> result, IEnumerable<EncoraCastMember> cast, Dictionary<string, string>? headshots = null)
+        public static void MapCastToResult(MetadataResult<Movie> result, IEnumerable<EncoraCastMember> cast)
         {
             foreach (var castMember in cast)
             {
@@ -62,10 +61,6 @@ namespace Jellyfin.Plugin.Encora.Models
                         Name = castMember.Performer?.Name,
                         Role = castMember.Character?.Name
                     };
-                    if (headshots != null && performerIdString != null && headshots.TryGetValue(performerIdString, out var headshotUrl))
-                    {
-                        personInfo.ImageUrl = headshotUrl;
-                    }
 
                     result.AddPerson(personInfo);
                 }
