@@ -74,7 +74,7 @@ namespace Jellyfin.Plugin.Encora.Providers
             }
 
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", stageMediaApiKey);
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("JellyfinPlugin/1.0");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("JellyfinAgent/0.1");
 
             var response = await client.GetAsync(url, cancellationToken).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
@@ -95,8 +95,6 @@ namespace Jellyfin.Plugin.Encora.Providers
                     });
                 }
             }
-
-            _logger.LogDebug("[Encora] [StageMedia] Posters: {Posters}", string.Join(", ", remoteImages.Select(i => i.Url)));
 
             return remoteImages;
         }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 using System.Net.Http;
@@ -12,6 +13,7 @@ using Jellyfin.Plugin.Encora.Models;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
+using MediaBrowser.Model.MediaInfo;
 using MediaBrowser.Model.Providers;
 using Microsoft.Extensions.Logging;
 
@@ -91,6 +93,7 @@ namespace Jellyfin.Plugin.Encora.Providers
 
             var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("JellyfinAgent/0.1");
 
             try
             {
@@ -98,50 +101,55 @@ namespace Jellyfin.Plugin.Encora.Providers
                 var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 var recording = JsonSerializer.Deserialize<EncoraRecording>(json, JsonOptions);
 
-                _logger.LogInformation("[Encora] Response: {Response}", json);
-
                 if (recording != null)
                 {
                     _logger.LogInformation("[Encora] ✅ Successfully fetched metadata from Encora for ID {EncoraId}", encoraId);
-                    _logger.LogInformation("[Encora] Show: {Show}, Tour: {Tour}, Date: {Date}, Master: {Master}", recording.Show, recording.Tour, recording.Date?.FullDate, recording.Master);
+
+                    var actorIds = recording.Cast?
+                        .Select(c => c.Performer?.Id.ToString(CultureInfo.InvariantCulture))
+                        .ToArray();
+                    var actorIdsParam = actorIds != null && actorIds.Length > 0
+                        ? string.Join(",", actorIds) : "1";
 
                     var movieDir = System.IO.Path.GetDirectoryName(info.Path);
                     var posterPath = !string.IsNullOrWhiteSpace(movieDir)
                         ? System.IO.Path.Combine(movieDir, "folder.jpg")
                         : null;
-                    // Fetch StageMedia poster and save as local poster.jpg
-                    if (!string.IsNullOrWhiteSpace(posterPath) && !System.IO.File.Exists(posterPath))
+                    var headshots = new Collection<StageMediaPerformer>();
+
+                    try
                     {
-                        // Only run this block if folder.jpg does NOT exist
-                        try
+                        var stageMediaApiKey = Plugin.Instance?.Configuration?.StageMediaAPIKey;
+                        if (!string.IsNullOrWhiteSpace(stageMediaApiKey) && recording.Metadata?.ShowId > 0)
                         {
-                            var stageMediaApiKey = Plugin.Instance?.Configuration?.StageMediaAPIKey;
-                            if (!string.IsNullOrWhiteSpace(stageMediaApiKey) && recording.Metadata?.ShowId > 0)
+                            var stageMediaUrl = $"https://stagemedia.me/api/images?show_id={recording.Metadata.ShowId}&actor_ids={actorIdsParam}";
+                            var stageMediaClient = _httpClientFactory.CreateClient();
+                            stageMediaClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", stageMediaApiKey);
+                            stageMediaClient.DefaultRequestHeaders.UserAgent.ParseAdd("JellyfinAgent/0.1");
+
+                            var stageMediaResponse = await stageMediaClient.GetAsync(stageMediaUrl, cancellationToken).ConfigureAwait(false);
+                            stageMediaResponse.EnsureSuccessStatusCode();
+                            var stageMediaJson = await stageMediaResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                            var images = JsonSerializer.Deserialize<StageMediaImages>(stageMediaJson);
+
+                            if (images?.Posters != null && images.Posters.Count > 0 && (!string.IsNullOrWhiteSpace(posterPath) && !System.IO.File.Exists(posterPath)))
                             {
-                                var stageMediaUrl = $"https://stagemedia.me/api/images?show_id={recording.Metadata.ShowId}&actor_ids=1";
-                                var stageMediaClient = _httpClientFactory.CreateClient();
-                                stageMediaClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", stageMediaApiKey);
-                                stageMediaClient.DefaultRequestHeaders.UserAgent.ParseAdd("JellyfinPlugin/1.0");
+                                var posterUrl = images.Posters[0];
+                                var posterResponse = await stageMediaClient.GetAsync(posterUrl, cancellationToken).ConfigureAwait(false);
+                                posterResponse.EnsureSuccessStatusCode();
+                                var posterBytes = await posterResponse.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+                                await System.IO.File.WriteAllBytesAsync(posterPath, posterBytes, cancellationToken).ConfigureAwait(false);
+                            }
 
-                                var stageMediaResponse = await stageMediaClient.GetAsync(stageMediaUrl, cancellationToken).ConfigureAwait(false);
-                                stageMediaResponse.EnsureSuccessStatusCode();
-                                var stageMediaJson = await stageMediaResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                                var images = JsonSerializer.Deserialize<StageMediaImages>(stageMediaJson);
-
-                                if (images?.Posters != null && images.Posters.Count > 0)
-                                {
-                                    var posterUrl = images.Posters[0];
-                                    var posterResponse = await stageMediaClient.GetAsync(posterUrl, cancellationToken).ConfigureAwait(false);
-                                    posterResponse.EnsureSuccessStatusCode();
-                                    var posterBytes = await posterResponse.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
-                                    await System.IO.File.WriteAllBytesAsync(posterPath, posterBytes, cancellationToken).ConfigureAwait(false);
-                                }
+                            if (images?.Performers != null && images.Performers.Count > 0)
+                            {
+                                headshots = images.Performers;
                             }
                         }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "[Encora] Could not download and save StageMedia poster for ShowId {ShowId}", recording.Metadata?.ShowId);
-                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[Encora] Could not download and save StageMedia poster for ShowId {ShowId}", recording.Metadata?.ShowId);
                     }
 
                     var titleFormat = Plugin.Instance?.Configuration?.TitleFormat ?? "{show}";
@@ -153,22 +161,24 @@ namespace Jellyfin.Plugin.Encora.Providers
                         PremiereDate = DateTime.TryParse(recording.Date?.FullDate, out var date) ? date : (DateTime?)null,
                         ProductionYear = DateTime.TryParse(recording.Date?.FullDate, out var yearDate) ? yearDate.Year : 0,
                         OriginalTitle = recording.Show,
-                        SortName = recording.Show
+                        SortName = recording.Show,
+                        HomePageUrl = $"https://encora.it/recordings/{encoraId}",
                     };
 
                     // Set genres from metadata
                     if (recording.Metadata != null)
                     {
                         movie.SetProviderId("StageMediaShowId", recording.Metadata.ShowId.ToString(CultureInfo.InvariantCulture));
+                        movie.SetProviderId("EncoraRecordingId", encoraId);
 
                         if (!string.IsNullOrWhiteSpace(recording.Metadata.RecordingType))
                         {
-                            movie.AddGenre(System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(recording.Metadata.RecordingType));
+                            movie.AddGenre(CultureInfo.CurrentCulture.TextInfo.ToTitleCase(recording.Metadata.RecordingType));
                         }
 
                         if (!string.IsNullOrWhiteSpace(recording.Metadata.AmountRecorded))
                         {
-                            movie.AddGenre(System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(recording.Metadata.AmountRecorded));
+                            movie.AddGenre(CultureInfo.CurrentCulture.TextInfo.ToTitleCase(recording.Metadata.AmountRecorded));
                         }
 
                         if (recording.Metadata.BootCampRecommended)
@@ -184,6 +194,56 @@ namespace Jellyfin.Plugin.Encora.Providers
                         if (recording.Metadata.IsConcert)
                         {
                             movie.AddGenre("Concert");
+                        }
+                    }
+
+                    // If metadata.HasSubtitles, request and download them
+                    if (recording.Metadata?.HasSubtitles == true && !string.IsNullOrWhiteSpace(encoraId) && !string.IsNullOrWhiteSpace(movieDir))
+                    {
+                        try
+                        {
+                            var subtitlesUrl = $"https://encora.it/api/recording/{encoraId}/subtitles";
+                            var subtitlesResponse = await client.GetAsync(subtitlesUrl, cancellationToken).ConfigureAwait(false);
+                            subtitlesResponse.EnsureSuccessStatusCode();
+                            var subtitlesJson = await subtitlesResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                            var subtitles = JsonSerializer.Deserialize<List<EncoraSubtitles>>(subtitlesJson);
+
+                            if (subtitles != null && subtitles.Count > 0)
+                            {
+                                var mediaFileName = System.IO.Path.GetFileNameWithoutExtension(info.Path);
+                                var subtitlePaths = new List<string>();
+
+                                foreach (var sub in subtitles)
+                                {
+                                    if (string.IsNullOrWhiteSpace(sub.Url) || string.IsNullOrWhiteSpace(sub.FileType))
+                                    {
+                                        continue;
+                                    }
+
+                                    // Use ISO 639-1 two-letter code, fallback to "en" if not available
+                                    var lang = sub.Language?.Length >= 2
+                                        ? sub.Language[..2].ToLowerInvariant()
+                                        : "en";
+
+                                    var ext = sub.FileType.ToLowerInvariant();
+                                    var subFileName = $"{mediaFileName}.{lang}.{ext}";
+                                    var subFilePath = System.IO.Path.Combine(movieDir, subFileName);
+
+                                    // Download and save the subtitle file
+                                    var subFileResponse = await client.GetAsync(sub.Url, cancellationToken).ConfigureAwait(false);
+                                    subFileResponse.EnsureSuccessStatusCode();
+                                    var subFileBytes = await subFileResponse.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+                                    await System.IO.File.WriteAllBytesAsync(subFilePath, subFileBytes, cancellationToken).ConfigureAwait(false);
+                                    subtitlePaths.Add(subFilePath);
+                                    movie.HasSubtitles = true;
+                                }
+
+                                movie.SubtitleFiles = subtitlePaths.ToArray();
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "[Encora] Could not download subtitles for recording {EncoraId}", encoraId);
                         }
                     }
 
@@ -217,7 +277,7 @@ namespace Jellyfin.Plugin.Encora.Providers
 
                     if (recording.Cast != null)
                     {
-                        EncoraCastMember.MapCastToResult(result, recording.Cast);
+                        EncoraCastMember.MapCastToResult(result, recording.Cast, headshots);
                     }
                 }
             }
@@ -247,19 +307,80 @@ namespace Jellyfin.Plugin.Encora.Providers
         /// <param name="recording">The recording object containing data to populate the placeholders in the format string.</param>
         private string FormatTitle(string format, EncoraRecording recording)
         {
-            // Prepare date variables
-            string? dateIso = recording.Date?.FullDate;
-            string? dateNumeric = dateIso?.Replace("-", string.Empty, StringComparison.Ordinal);
+            var dateReplaceChar = Plugin.Instance?.Configuration?.DateReplaceChar ?? "x";
+            var date = recording.Date;
+            string? dateLong = null;
+            string? dateIso = null;
             string? dateUsa = null;
-            if (DateTime.TryParse(dateIso, out var dt))
+            string? dateNumeric = null;
+
+            if (date != null && !string.IsNullOrWhiteSpace(date.FullDate))
             {
-                dateUsa = dt.ToString("MM/dd/yyyy", System.Globalization.CultureInfo.InvariantCulture);
+                var parts = date.FullDate.Split('-');
+                var year = parts.Length > 0 ? parts[0] : string.Empty;
+                var month = (parts.Length > 1 && date.MonthKnown) ? parts[1] : new string(dateReplaceChar[0], 2);
+                var day = (parts.Length > 2 && date.DayKnown) ? parts[2] : new string(dateReplaceChar[0], 2);
+
+                // {date}: "December 31, 2024" or with replace char
+                if (date.MonthKnown && date.DayKnown && int.TryParse(month, out var m) && int.TryParse(day, out var d) && int.TryParse(year, out var y))
+                {
+                    var dt = new DateTime(y, m, d);
+                    dateLong = dt.ToString("MMMM d, yyyy", CultureInfo.InvariantCulture);
+                }
+                else if (date.MonthKnown && int.TryParse(month, out var m2) && int.TryParse(year, out var y2))
+                {
+                    var dt = new DateTime(y2, m2, 1);
+                    dateLong = dt.ToString("MMMM", CultureInfo.InvariantCulture) + $" {day}, {year}";
+                    if (!date.DayKnown)
+                    {
+                        dateLong = dt.ToString("MMMM", CultureInfo.InvariantCulture) + $" {new string(dateReplaceChar[0], 2)}, {year}";
+                    }
+                }
+                else if (int.TryParse(year, out var y3))
+                {
+                    dateLong = $"{year}";
+                    if (!date.MonthKnown)
+                    {
+                        dateLong = $"{year}";
+                    }
+                }
+                else
+                {
+                    dateLong = $"{year}-{month}-{day}";
+                }
+
+                // {date_iso}: "2024-12-31"
+                dateIso = $"{year}-{month}-{day}";
+
+                // {date_usa}: "12-31-2024"
+                dateUsa = $"{month}-{day}-{year}";
+
+                // {date_numeric}: "31-12-2024"
+                dateNumeric = $"{day}-{month}-{year}";
+
+                // Append variant if present
+                if (!string.IsNullOrWhiteSpace(date.DateVariant))
+                {
+                    dateLong += $" ({date.DateVariant})";
+                    dateIso += $" ({date.DateVariant})";
+                    dateUsa += $" ({date.DateVariant})";
+                    dateNumeric += $" ({date.DateVariant})";
+                }
+
+                // Append (matinee) if time is "matinee"
+                if (!string.IsNullOrWhiteSpace(date.Time) && date.Time.Equals("matinee", StringComparison.OrdinalIgnoreCase))
+                {
+                    dateLong += " (matinée)";
+                    dateIso += " (matinée)";
+                    dateUsa += " (matinée)";
+                    dateNumeric += " (matinée)";
+                }
             }
 
             var variables = new Dictionary<string, string?>
             {
                 ["show"] = recording.Show,
-                ["date"] = dateIso,
+                ["date"] = dateLong,
                 ["date_iso"] = dateIso,
                 ["date_numeric"] = dateNumeric,
                 ["date_usa"] = dateUsa,

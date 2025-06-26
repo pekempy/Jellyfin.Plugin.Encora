@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 using System.Text;
@@ -35,14 +36,15 @@ namespace Jellyfin.Plugin.Encora.Models
         /// Gets or sets the status of the cast member (e.g., "understudy"), if any.
         /// </summary>
         [JsonPropertyName("status")]
-        public string? Status { get; set; }
+        public EncoraCastStatus? Status { get; set; }
 
         /// <summary>
         /// Maps the cast members to the metadata result.
         /// </summary>
         /// <param name="result">The metadata result to which the cast members will be added.</param>
         /// <param name="cast">The collection of cast members to map.</param>
-        public static void MapCastToResult(MetadataResult<Movie> result, IEnumerable<EncoraCastMember> cast)
+        /// <param name="headshots">Optional collection of headshots associated with the cast members.</param>
+        public static void MapCastToResult(MetadataResult<Movie> result, IEnumerable<EncoraCastMember> cast, Collection<StageMediaPerformer> headshots)
         {
             foreach (var castMember in cast)
             {
@@ -55,12 +57,23 @@ namespace Jellyfin.Plugin.Encora.Models
 
                 if (!string.IsNullOrWhiteSpace(performerName))
                 {
+                    // Prefix character name with abbreviation if present
+                    string? role = characterName;
+                    if (castMember.Status?.Abbreviation is { Length: > 0 })
+                    {
+                        role = $"{castMember.Status.Abbreviation} {characterName}";
+                    }
+
                     var personInfo = new PersonInfo
                     {
                         Type = PersonKind.Actor,
-                        Name = castMember.Performer?.Name,
-                        Role = castMember.Character?.Name
+                        Name = performerName,
+                        Role = role
                     };
+                    if (performerId > 0 && headshots != null && headshots.Any(h => h.Id == performerId))
+                    {
+                        personInfo.ImageUrl = headshots.FirstOrDefault(h => h.Id == performerId)?.Url;
+                    }
 
                     result.AddPerson(personInfo);
                 }
