@@ -182,7 +182,7 @@ namespace Jellyfin.Plugin.Encora.Providers
 
                     var movie = new Movie
                     {
-                        Name = FormatTitle(titleFormat, recording),
+                        Name = FormatTitle(titleFormat, recording, info.Path),
                         Overview = finalDescription,
                         PremiereDate = DateTime.TryParse(recording.Date?.FullDate, out var date) ? date : (DateTime?)null,
                         ProductionYear = DateTime.TryParse(recording.Date?.FullDate, out var yearDate) ? yearDate.Year : 0,
@@ -368,7 +368,8 @@ namespace Jellyfin.Plugin.Encora.Providers
         /// </summary>
         /// <param name="format">The format string used to generate the title. It may contain placeholders like {show}, {date}, etc.</param>
         /// <param name="recording">The recording object containing data to populate the placeholders in the format string.</param>
-        private string FormatTitle(string format, EncoraRecording recording)
+        /// <param name="path">The file path of the recording, used to extract additional information if needed.</param>
+        private string FormatTitle(string format, EncoraRecording recording, string path)
         {
             var dateReplaceChar = Plugin.Instance?.Configuration?.DateReplaceChar ?? "x";
             var date = recording.Date;
@@ -440,9 +441,17 @@ namespace Jellyfin.Plugin.Encora.Providers
                 }
             }
 
+            // Append "Act X" from filename if present
+            var match = Regex.Match(path ?? string.Empty, @"Act\s*(\d+)", RegexOptions.IgnoreCase);
+            var showWithAct = recording.Show;
+            if (match.Success)
+            {
+                showWithAct = $"{showWithAct} Act {match.Groups[1].Value}";
+            }
+
             var variables = new Dictionary<string, string?>
             {
-                ["show"] = recording.Show,
+                ["show"] = showWithAct,
                 ["date"] = dateLong,
                 ["date_iso"] = dateIso,
                 ["date_numeric"] = dateNumeric,
