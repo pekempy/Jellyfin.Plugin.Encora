@@ -7,6 +7,7 @@ using Jellyfin.Data.Enums;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.LiveTv;
 
 namespace Jellyfin.Plugin.Encora.Models
 {
@@ -39,8 +40,13 @@ namespace Jellyfin.Plugin.Encora.Models
         /// <param name="result">The metadata result to which the cast members will be added.</param>
         /// <param name="cast">The collection of cast members to map.</param>
         /// <param name="headshots">Optional collection of headshots associated with the cast members.</param>
-        public static void MapCastToResult(MetadataResult<Movie> result, IEnumerable<EncoraCastMember> cast, Collection<StageMediaPerformer> headshots)
+        /// <param name="master">The master name to be added as a director, if applicable.</param>
+        /// <param name="shouldAddMasterDirector">Indicates whether to add the master as a director.</param>
+        public static void MapCastToResult(MetadataResult<Movie> result, IEnumerable<EncoraCastMember> cast, Collection<StageMediaPerformer> headshots, string? master, bool shouldAddMasterDirector)
         {
+            var config = Plugin.Instance?.Configuration;
+            var addedPeople = new List<PersonInfo>();
+
             foreach (var castMember in cast)
             {
                 var performerName = castMember.Performer?.Name;
@@ -52,7 +58,6 @@ namespace Jellyfin.Plugin.Encora.Models
 
                 if (!string.IsNullOrWhiteSpace(performerName))
                 {
-                    // Prefix character name with abbreviation if present
                     string? role = characterName;
                     if (castMember.Status?.Abbreviation is { Length: > 0 })
                     {
@@ -65,13 +70,36 @@ namespace Jellyfin.Plugin.Encora.Models
                         Name = performerName,
                         Role = role
                     };
+
                     if (performerId > 0 && headshots != null && headshots.Any(h => h.Id == performerId))
                     {
                         personInfo.ImageUrl = headshots.FirstOrDefault(h => h.Id == performerId)?.Url;
                     }
 
-                    result.AddPerson(personInfo);
+                    addedPeople.Add(personInfo);
                 }
+            }
+
+            // Add Master as Director if enabled
+            if (shouldAddMasterDirector)
+            {
+                var normalizedMaster = master?.Trim().ToLowerInvariant() ?? string.Empty;
+                var skipMasters = new HashSet<string> { "pro-shot", "house-cam", "press-reel", "soundboard" };
+
+                if (!skipMasters.Contains(normalizedMaster))
+                {
+                    addedPeople.Add(new PersonInfo
+                    {
+                        Type = PersonKind.Director,
+                        Name = master ?? string.Empty,
+                        Role = "Director"
+                    });
+                }
+            }
+
+            foreach (var person in addedPeople)
+            {
+                result.AddPerson(person);
             }
         }
     }

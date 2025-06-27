@@ -301,9 +301,13 @@ namespace Jellyfin.Plugin.Encora.Providers
                     result.HasMetadata = true;
                     result.Item = movie;
 
+                    var shouldAddMasterDirector = Plugin.Instance?.Configuration?.AddMasterDirector ?? false;
+
+                    _logger.LogInformation("[Encora] Should add master as director: {MasterDirector}", shouldAddMasterDirector);
+
                     if (recording.Cast != null)
                     {
-                        EncoraCastMember.MapCastToResult(result, recording.Cast, headshots);
+                        EncoraCastMember.MapCastToResult(result, recording.Cast, headshots, recording.Master, shouldAddMasterDirector);
                     }
                 }
             }
