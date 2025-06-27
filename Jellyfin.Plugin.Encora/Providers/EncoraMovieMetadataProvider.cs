@@ -165,10 +165,25 @@ namespace Jellyfin.Plugin.Encora.Providers
 
                     var titleFormat = Plugin.Instance?.Configuration?.TitleFormat ?? "{show}";
 
+                    var description = recording.Metadata?.ShowDescription;
+
+                    if (!string.IsNullOrEmpty(recording.MasterNotes))
+                    {
+                        description += $"\n\nMaster Notes: \n{recording.MasterNotes}";
+                    }
+
+                    if (!string.IsNullOrEmpty(recording.Notes))
+                    {
+                        description += $"\n\nGeneral Notes: \n{recording.Notes}";
+                    }
+
+                    description = description?.TrimStart('\n').Trim();
+                    var finalDescription = string.IsNullOrWhiteSpace(description) ? "Fetched from Encora.it" : description;
+
                     var movie = new Movie
                     {
                         Name = FormatTitle(titleFormat, recording),
-                        Overview = recording.Metadata?.ShowDescription ?? recording.Notes ?? "Fetched from Encora.it",
+                        Overview = finalDescription,
                         PremiereDate = DateTime.TryParse(recording.Date?.FullDate, out var date) ? date : (DateTime?)null,
                         ProductionYear = DateTime.TryParse(recording.Date?.FullDate, out var yearDate) ? yearDate.Year : 0,
                         OriginalTitle = recording.Show,
