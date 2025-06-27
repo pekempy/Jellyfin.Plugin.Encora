@@ -14,13 +14,21 @@ If no Encora ID is found, the plugin will fall back to parsing NFO files (if pre
 ---
 
 ### Contents
-
+- [Current problems](current-problems)
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting)
 - [Metadata Matching](#metadata-matching)
 - [Available Title Variables](#available-title-variables)
 - [Fixing missing posters/headshots](#fixing-missing-posters--headshots)
+
+---
+### Current problems
+
+This plugin is new and because of that it has a couple of quirks:
+1. If a recording is split into Act 1 and Act 2, this plugin will download the entire show's subtitles for both acts, meaning functionally you just get subtitles for Act 1.
+2. "Continue Watching" requires generation of a thumb.jpg to look normal, this has not yet been implemented and you currently just get a zoomed in poster.
+3. It is only possible to decide what poster a specific recording has, StageMedia will not provide posters for folders. The poster each recording has will decide what the parent folders will look like, unless you edit and upload it manually.
 
 ---
 
