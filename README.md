@@ -1,4 +1,4 @@
-![Encora Reprise](Contents/Resources/icon-default.png)
+![Encora Reprise](https://i.imgur.com/M3ShJse.png)
 
 # Encora Jellyfin Agent
 
@@ -8,7 +8,7 @@ If no Encora ID is found, the plugin will fall back to parsing NFO files (if pre
 
 <sup>Thanks to [Bubba8291](https://github.com/Bubba8291) for their work on the [StageMedia.me](https://stagemedia.me) database.</sup>
 
-> ⚠️ The Encora API is rate-limited to **30 requests per minute**. Large libraries may take time to fully scan. The plugin will handle this automatically and retry once the limit resets.  
+> ⚠️ The Encora API is rate-limited to **30 requests per minute**. Large libraries may take time to fully scan. 
 > 🎭 You **must** generate a StageMedia API key from your account to enable headshots/poster fetching.
 
 ---
@@ -28,7 +28,7 @@ If no Encora ID is found, the plugin will fall back to parsing NFO files (if pre
 1. Download the plugin zip:  
    [Encora-JellyfinPlugin.zip](https://github.com/pekempy/Encora-JellyfinPlugin/releases/latest)
 
-2. Extract and place the plugin `.dll` file into your Jellyfin server plugins directory:
+2. Extract and place the plugin `.dll` files into your Jellyfin server plugins directory:
 
    - **Windows:**  
      `C:\ProgramData\Jellyfin\Server\plugins\Encora`
@@ -55,7 +55,7 @@ plugins/
 
 ### Configuration
 
-1. Go to the **Jellyfin Admin Dashboard** → **Plugins** → **Encora**.
+1. Go to the **Jellyfin Admin Dashboard** → **My Plugins** → **Encora**.
 2. Enter the required API keys:
 
 - **Encora API key** (you must request this from Encora support)
@@ -72,6 +72,10 @@ plugins/
 
 - Contain the Encora ID in the filename or folder name, e.g.  
  `Frozen {e-2015995}`
+- Contain a `.encora-{id}` file inside the folder, e.g.
+  `Frozen - Broadway - May, 2022/.encora-123`
+- Contain a `.encora-id` file inside the folder, e.g.
+  `Frozen - Broadway - May, 2022/.encora-id` with file contents `123`
 
 ---
 
@@ -79,7 +83,7 @@ plugins/
 
 **Text:**
 
-- `{show}` → Show name, e.g. `Hadestown`  
+- `{show}` → Show name, e.g. `Hadestown`  - This will receive a suffix of `Act 1` / `Act 2` if your files contain those.
 - `{tour}` → Tour name, e.g. `Broadway`, `West End`  
 - `{master}` → Name of the master / taper
 
