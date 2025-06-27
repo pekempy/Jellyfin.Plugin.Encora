@@ -10,7 +10,7 @@ If no Encora ID is found, the plugin will fall back to parsing NFO files (if pre
 
 > ⚠️ The Encora API is rate-limited to **30 requests per minute**. Large libraries may take time to fully scan. 
 > 🎭 You **must** generate a StageMedia API key from your account to enable headshots/poster fetching.
-
+> Make sure your Jellyfin is updated. This is tested on `10.10.7`
 ---
 
 ### Contents
