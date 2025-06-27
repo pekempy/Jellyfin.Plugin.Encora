@@ -41,7 +41,7 @@ This plugin is new and because of that it has a couple of quirks:
    - **Windows:**  
      `C:\ProgramData\Jellyfin\Server\plugins\Encora`
      or
-     `C:\Windows\Users\youruser\AppData\Local\jellyfin\plugins`
+     `%LOCALAPPDATA%\jellyfin\plugins`
 
    - **Linux (Systemd):**  
      `/var/lib/jellyfin/plugins/Encora`
