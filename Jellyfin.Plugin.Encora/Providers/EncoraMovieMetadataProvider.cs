@@ -13,7 +13,6 @@ using Jellyfin.Plugin.Encora.Models;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
-using MediaBrowser.Model.MediaInfo;
 using MediaBrowser.Model.Providers;
 using Microsoft.Extensions.Logging;
 
@@ -82,7 +81,10 @@ namespace Jellyfin.Plugin.Encora.Providers
             var encoraId = ExtractEncoraId(info.Path);
             if (string.IsNullOrWhiteSpace(encoraId))
             {
-                return result;
+                _logger.LogInformation("[Encora] ❌ No Encora ID found in path: {Path}", info.Path);
+                _logger.LogInformation("[Encora] Falling back to NFO metadata for {Path}", info.Path);
+                // Fallback: Try to load metadata from NFO file
+                return await GetNfoMetadataAsync(info, cancellationToken).ConfigureAwait(false);
             }
 
             var apiKey = Plugin.Instance?.Configuration?.EncoraAPIKey;
@@ -98,6 +100,15 @@ namespace Jellyfin.Plugin.Encora.Providers
             try
             {
                 var response = await client.GetAsync($"https://encora.it/api/recording/{encoraId}", cancellationToken).ConfigureAwait(false);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogInformation("[Encora] Bad response");
+                    _logger.LogInformation("[Encora] Falling back to NFO metadata for {Path}", info.Path);
+                    // Fallback: Try to load metadata from NFO file
+                    return await GetNfoMetadataAsync(info, cancellationToken).ConfigureAwait(false);
+                }
+
                 var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 var recording = JsonSerializer.Deserialize<EncoraRecording>(json, JsonOptions);
 
@@ -284,6 +295,9 @@ namespace Jellyfin.Plugin.Encora.Providers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[Encora] ❌ Failed to fetch metadata from Encora for ID {EncoraId}", encoraId);
+                _logger.LogInformation("[Encora] Falling back to NFO metadata for {Path}", info.Path);
+                // Fallback: Try to load metadata from NFO file
+                return await GetNfoMetadataAsync(info, cancellationToken).ConfigureAwait(false);
             }
 
             return result;
@@ -296,8 +310,38 @@ namespace Jellyfin.Plugin.Encora.Providers
         /// <returns>The Encora ID if found; otherwise, null.</returns>
         private string? ExtractEncoraId(string path)
         {
+            // Try to extract from path
             var match = Regex.Match(path, @"{e-(\d+)}", RegexOptions.IgnoreCase);
-            return match.Success ? match.Groups[1].Value : null;
+            if (match.Success)
+            {
+                return match.Groups[1].Value;
+            }
+
+            // Fallback: look for .encora-<id> file in the directory
+            var directory = System.IO.Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                var files = System.IO.Directory.GetFiles(directory, ".encora-*");
+                foreach (var file in files)
+                {
+                    var fileName = System.IO.Path.GetFileName(file);
+                    var fileMatch = Regex.Match(fileName, @"\.encora-(\d+)", RegexOptions.IgnoreCase);
+                    if (fileMatch.Success)
+                    {
+                        return fileMatch.Groups[1].Value;
+                    }
+                }
+
+                // Fallback: check for .encora-id file
+                var encoraIdFile = System.IO.Path.Combine(directory, ".encora-id");
+                if (System.IO.File.Exists(encoraIdFile))
+                {
+                    var id = System.IO.File.ReadAllText(encoraIdFile).Trim();
+                    return string.IsNullOrWhiteSpace(id) ? null : id;
+                }
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -406,6 +450,14 @@ namespace Jellyfin.Plugin.Encora.Providers
         {
             var client = _httpClientFactory.CreateClient();
             return client.GetAsync(url, cancellationToken);
+        }
+
+        // Helper method to read NFO metadata (uses built-in NfoMetadataProvider)
+        private async Task<MetadataResult<Movie>> GetNfoMetadataAsync(MovieInfo info, CancellationToken cancellationToken)
+        {
+            _logger.LogInformation("[Encora] GetNfoMetadataAsync called");
+            var nfoProvider = new NfoMetadataProvider();
+            return await nfoProvider.GetMetadata(info, cancellationToken).ConfigureAwait(false);
         }
     }
 }
