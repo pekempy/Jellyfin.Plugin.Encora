@@ -14,24 +14,34 @@ If no Encora ID is found, the plugin will fall back to parsing NFO files (if pre
 ---
 
 ### Contents
-
+- [Current problems](#current-problems)
 - [Installation](#installation)
 - [Configuration](#configuration)
+- [Troubleshooting](#troubleshooting)
 - [Metadata Matching](#metadata-matching)
 - [Available Title Variables](#available-title-variables)
 - [Fixing missing posters/headshots](#fixing-missing-posters--headshots)
 
 ---
+### Current problems
+
+This plugin is new and because of that it has a couple of quirks:
+1. If a recording is split into Act 1 and Act 2, this plugin will download the entire show's subtitles for both acts, meaning functionally you just get subtitles for Act 1.
+2. "Continue Watching" requires generation of a thumb.jpg to look normal, this has not yet been implemented and you currently just get a zoomed in poster.
+3. It is only possible to decide what poster a specific recording has, StageMedia will not provide posters for folders. The poster each recording has will decide what the parent folders will look like, unless you edit and upload it manually.
+
+---
 
 ### Installation
 
-1. Download the plugin zip:  
-   [Encora-JellyfinPlugin.zip](https://github.com/pekempy/Encora-JellyfinPlugin/releases/latest)
-
-2. Extract and place the plugin `.dll` files into your Jellyfin server plugins directory:
+1. Head to **Releases** and download the latest version of **Jellyfin.Plugin.Encora.zip**:
+   [Releases](https://github.com/pekempy/Jellyfin.Plugin.Encora/releases)
+2. Extract and place the entire folder containing the `.dll` into your Jellyfin server plugins directory:
 
    - **Windows:**  
      `C:\ProgramData\Jellyfin\Server\plugins\Encora`
+     or
+     `%LOCALAPPDATA%\jellyfin\plugins`
 
    - **Linux (Systemd):**  
      `/var/lib/jellyfin/plugins/Encora`
@@ -43,8 +53,8 @@ If no Encora ID is found, the plugin will fall back to parsing NFO files (if pre
 
 ```
 plugins/
-└── Encora/
-  ├── Encora.Plugin.dll
+└── Jellyfin.Plugin.Encora/
+  ├── Jellyfin.Plugin.Encora.dll
   └── other files...
 ```
 
@@ -63,6 +73,26 @@ plugins/
 
 3. Customise any other settings
 4. Save settings.
+
+
+To enable the plugin for the library you want, do the following:
+1. Go to **Jellyfin Admin Dashboard** → **Libraries** → **Libraries**
+2. Click the **three dots** of the library you want the plugin to work on, and select **Manage library**
+3. Uncheck all **Metadata downloaders** and **Image fetchers**, with the exception of **Encora** and **StageMedia**
+4. Click **OK**, click the **three dots** again, select **Scan library** and press **Refresh** (Alternatively select **Replace all metadata** with **Replace existing images** checked if you have previously had metadata in your library)
+
+---
+
+### Troubleshooting
+If you're having trouble getting the plugin to work, please confirm that you've done everything below:
+
+1. Make sure Jellyfin is updated to version 10.10.7
+2. Double check that the downloaded folder contains a single .dll file, among three other files.
+3. Ensure that you've extracted and placed the entire downloaded folder in the correct directory. If you're on Windows that should be under "ProgramData" (not to be confused with "Program Files"), or in some cases under %appdata%
+4. Restart Jellyfin.
+5. Under **My plugins**, if the **Encora** plugin shows up and its status is **Status Active**, refer to the **Configuration** step to enable the plugin for your library.
+6. If it still doesn't work, go into the **Jellyfin Admin Dashboard** → **Logs**, and find the most recent log and look for any errors happening around the time when you restarted Jellyfin. Look for any errors regarding plugins being loaded incorrectly, or Jellyfin not having the proper permissions/being read only.
+7. If all seems lost, head into the Encora Discord, accept the rules and ask for help in the channel #media-server-agents
 
 ---
 
