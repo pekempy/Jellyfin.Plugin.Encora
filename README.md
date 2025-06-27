@@ -14,7 +14,7 @@ If no Encora ID is found, the plugin will fall back to parsing NFO files (if pre
 ---
 
 ### Contents
-- [Current problems](current-problems)
+- [Current problems](#current-problems)
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting)
