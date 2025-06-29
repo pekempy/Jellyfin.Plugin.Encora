@@ -46,6 +46,9 @@ This plugin is new and because of that it has a couple of quirks:
    - **Linux (Systemd):**  
      `/var/lib/jellyfin/plugins/Encora`
 
+   - **MacOS:**  
+     `/Users/{username}/Library/Application Support/jellyfin/plugins/`
+
    - **Docker:**  
      Bind mount the folder into the container at `/config/plugins/Encora`
 
