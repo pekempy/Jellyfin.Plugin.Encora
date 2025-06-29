@@ -28,7 +28,7 @@ If no Encora ID is found, the plugin will fall back to parsing NFO files (if pre
 This plugin is new and because of that it has a couple of quirks:
 1. If a recording is split into Act 1 and Act 2, this plugin will download the entire show's subtitles for both acts, meaning functionally you just get subtitles for Act 1.
 2. "Continue Watching" requires generation of a thumb.jpg to look normal, this has not yet been implemented and you currently just get a zoomed in poster.
-3. It is only possible to decide what poster a specific recording has, StageMedia will not provide posters for folders. The poster each recording has will decide what the parent folders will look like, unless you edit and upload it manually.
+3. It is only possible to decide what poster a specific recording has, StageMedia will not provide posters for folders. The poster each recording has will decide what the parent folders will look like, unless you edit and upload it manually. This behavior likely can not be changed.
 
 ---
 
@@ -82,7 +82,10 @@ To enable the plugin for the library you want, do the following:
 1. Go to **Jellyfin Admin Dashboard** → **Libraries** → **Libraries**
 2. Click the **three dots** of the library you want the plugin to work on, and select **Manage library**
 3. Uncheck all **Metadata downloaders** and **Image fetchers**, with the exception of **Encora** and **StageMedia**
-4. Click **OK**, click the **three dots** again, select **Scan library** and press **Refresh** (Alternatively select **Replace all metadata** with **Replace existing images** checked if you have previously had metadata in your library)
+4. Check the option **Save artwork into media folders**
+5. Click **OK**, click the **three dots** again, select **Scan library** and press **Refresh** (Alternatively select **Replace all metadata** with **Replace existing images** checked if you have previously had metadata in your library)
+
+Note: If you have multiple libraries of the same (or just partly the same) directory, make sure to do this for all of them. However it is best practice to not keep duplicate libraries as this will just cause issues.
 
 ---
 
