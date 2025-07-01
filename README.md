@@ -102,6 +102,12 @@ If you're having trouble getting the plugin to work, please confirm that you've 
 
 ---
 
+If your plugin is working, but in your logs you see errors such as `Unsupported codec with id 0 for input stream 2`:
+- Identify which recording it is, the line above should say something like `file:/{path}`
+- Run [ffmpeg](https://github.com/FFmpeg/FFmpeg) on the offending file to only keep 1 audio and 1 video stream:
+    - `ffmpeg -i "{input_file}" -map 0:v -map 0:a -c copy "fixed.mp4"` <- replace {input_file} with the path to the video
+    - Rename fixed.mp4 to something you would prefer and re-scan Jellyfin
+
 ### Metadata Matching
 
 - To be matched with Encora, your media folder should:
