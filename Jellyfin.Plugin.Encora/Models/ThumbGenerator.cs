@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -35,12 +36,48 @@ namespace Jellyfin.Plugin.Encora.Models
                     try
                     {
                         var ffmpegPath = mediaEncoder.EncoderPath;
-                        var random = new Random();
-                        var minutes = random.Next(10, 31); // 10 to 30 inclusive
-                        var thumbTime = TimeSpan.FromMinutes(minutes);
-                        var thumbArgs = $"-ss {thumbTime} -i \"{info.Path}\" -frames:v 1 -vf \"scale=320:-1\" -y \"{thumbPath}\"";
 
-                        logger.LogInformation("[Encora] [Thumb] Extracting thumb.png from media file {Path} at time {Time}", movieDir, thumbTime);
+                        // Determine video duration using ffmpeg (stderr parsing)
+                        var duration = TimeSpan.FromMinutes(30); // fallback
+                        try
+                        {
+                            var durationProcess = new System.Diagnostics.Process
+                            {
+                                StartInfo = new System.Diagnostics.ProcessStartInfo
+                                {
+                                    FileName = ffmpegPath,
+                                    Arguments = $"-i \"{info.Path}\" -hide_banner",
+                                    RedirectStandardError = true,
+                                    UseShellExecute = false,
+                                    CreateNoWindow = true
+                                }
+                            };
+
+                            durationProcess.Start();
+                            var stderr = await durationProcess.StandardError.ReadToEndAsync().ConfigureAwait(false);
+                            await durationProcess.WaitForExitAsync().ConfigureAwait(false);
+
+                            var match = System.Text.RegularExpressions.Regex.Match(stderr, @"Duration: (\d+):(\d+):(\d+)\.(\d+)");
+                            if (match.Success)
+                            {
+                                var h = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
+                                var m = int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture);
+                                var s = int.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture);
+                                duration = new TimeSpan(h, m, s);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogWarning(ex, "[Encora] [Thumb] ⚠️ Failed to determine video duration");
+                        }
+
+                        // Calculate seek time between 15% and 60%
+                        var random = new Random();
+                        var seekSeconds = duration.TotalSeconds * (0.15 + (0.45 * random.NextDouble()));
+                        var seekTime = TimeSpan.FromSeconds(seekSeconds);
+
+                        var thumbArgs = $"-ss {seekTime:hh\\:mm\\:ss} -i \"{info.Path}\" -frames:v 1 -vf \"scale=320:-1\" -y \"{thumbPath}\"";
+                        logger.LogInformation("[Encora] [Thumb] Extracting thumb.png from media file {Path} at time {Time}", info.Path, seekTime);
 
                         var process = new System.Diagnostics.Process
                         {
