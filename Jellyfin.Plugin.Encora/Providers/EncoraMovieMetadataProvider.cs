@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -9,8 +10,11 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using Jellyfin.Plugin.Encora.Models;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
@@ -21,10 +25,11 @@ namespace Jellyfin.Plugin.Encora.Providers
     /// <summary>
     /// Provides metadata for movies from the Encora API.
     /// </summary>
-    public class EncoraMovieMetadataProvider : IRemoteMetadataProvider<Movie, MovieInfo>, IHasOrder
+    public class EncoraMovieMetadataProvider : IRemoteMetadataProvider<Movie, MovieInfo>, IHasOrder, IMetadataProvider
     {
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ILogger<EncoraMovieMetadataProvider> _logger;
+        private readonly IMediaEncoder _mediaEncoder;
 
         private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
         {
@@ -36,10 +41,13 @@ namespace Jellyfin.Plugin.Encora.Providers
         /// </summary>
         /// <param name="httpClientFactory">The HTTP client factory.</param>
         /// <param name="logger">The logger instance used for logging.</param>
-        public EncoraMovieMetadataProvider(IHttpClientFactory httpClientFactory, ILogger<EncoraMovieMetadataProvider> logger)
+        /// <param name="mediaEncoder">The media encoder used for processing media files.</param>
+        public EncoraMovieMetadataProvider(IHttpClientFactory httpClientFactory, ILogger<EncoraMovieMetadataProvider> logger, IMediaEncoder mediaEncoder)
         {
             _httpClientFactory = httpClientFactory;
             _logger = logger;
+            _mediaEncoder = mediaEncoder;
+            _logger.LogInformation("[Encora] ✅ EncoraMovieMetadataProvider initialized.");
         }
 
         /// <summary>
@@ -71,31 +79,40 @@ namespace Jellyfin.Plugin.Encora.Providers
         /// <returns>A task that represents the asynchronous operation. The task result contains the metadata result.</returns>
         public async Task<MetadataResult<Movie>> GetMetadata(MovieInfo info, CancellationToken cancellationToken)
         {
+            _logger.LogInformation("[Encora] Runnin GetMetadata for movie info: {Path}", info?.Path ?? "null");
             var result = new MetadataResult<Movie>();
 
-            if (string.IsNullOrWhiteSpace(info.Path))
+            if (info == null)
             {
+                _logger.LogInformation("[Encora] ❌ Movie info is null, skipping metadata fetch.");
                 return result;
             }
 
-            var encoraId = ExtractEncoraId(info.Path);
-            if (string.IsNullOrWhiteSpace(encoraId))
+            if (string.IsNullOrWhiteSpace(info.Path))
             {
-                _logger.LogInformation("[Encora] ❌ No Encora ID found in path: {Path}", info.Path);
-                _logger.LogInformation("[Encora] Falling back to NFO metadata for {Path}", info.Path);
-                // Fallback: Try to load metadata from NFO file
-                return await GetNfoMetadataAsync(info, cancellationToken).ConfigureAwait(false);
+                _logger.LogInformation("[Encora] ❌ No path provided for movie info, skipping metadata fetch. {InfoPath}", info.Path);
+                return result;
             }
 
             var apiKey = Plugin.Instance?.Configuration?.EncoraAPIKey;
             if (string.IsNullOrWhiteSpace(apiKey))
             {
+                _logger.LogInformation("[Encora] ❌ No API key configured, skipping metadata fetch for {Path}", info.Path);
                 return result;
+            }
+
+            var encoraId = ExtractEncoraId(info.Path);
+            _logger.LogInformation("[Encora] Extracted Encora ID: {EncoraId} from path: {Path}", encoraId, info.Path);
+            if (string.IsNullOrWhiteSpace(encoraId))
+            {
+                _logger.LogInformation("[Encora] ❌ No Encora ID found in path: {Path}, falling back to NFO file...", info.Path);
+                return await ParseNfoMetadata(info, cancellationToken).ConfigureAwait(false);
             }
 
             var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
             client.DefaultRequestHeaders.UserAgent.ParseAdd("JellyfinAgent/0.1");
+            var movieDir = Path.GetDirectoryName(info.Path);
 
             try
             {
@@ -103,10 +120,8 @@ namespace Jellyfin.Plugin.Encora.Providers
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.LogInformation("[Encora] Bad response");
-                    _logger.LogInformation("[Encora] Falling back to NFO metadata for {Path}", info.Path);
-                    // Fallback: Try to load metadata from NFO file
-                    return await GetNfoMetadataAsync(info, cancellationToken).ConfigureAwait(false);
+                    _logger.LogInformation("[Encora] Bad response from Encora API, Falling back to NFO metadata for {Path}", info.Path);
+                    return await ParseNfoMetadata(info, cancellationToken).ConfigureAwait(false);
                 }
 
                 var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
@@ -122,7 +137,6 @@ namespace Jellyfin.Plugin.Encora.Providers
                     var actorIdsParam = actorIds != null && actorIds.Length > 0
                         ? string.Join(",", actorIds) : "1";
 
-                    var movieDir = System.IO.Path.GetDirectoryName(info.Path);
                     var posterPath = !string.IsNullOrWhiteSpace(movieDir)
                         ? System.IO.Path.Combine(movieDir, "folder.jpg")
                         : null;
@@ -133,6 +147,7 @@ namespace Jellyfin.Plugin.Encora.Providers
                         var stageMediaApiKey = Plugin.Instance?.Configuration?.StageMediaAPIKey;
                         if (!string.IsNullOrWhiteSpace(stageMediaApiKey) && recording.Metadata?.ShowId > 0)
                         {
+                            _logger.LogInformation("[Encora] Fetching StageMedia images for ShowId {ShowId} with ActorIds {ActorIds}", recording.Metadata.ShowId, actorIdsParam);
                             var stageMediaUrl = $"https://stagemedia.me/api/images?show_id={recording.Metadata.ShowId}&actor_ids={actorIdsParam}";
                             var stageMediaClient = _httpClientFactory.CreateClient();
                             stageMediaClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", stageMediaApiKey);
@@ -143,13 +158,14 @@ namespace Jellyfin.Plugin.Encora.Providers
                             var stageMediaJson = await stageMediaResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                             var images = JsonSerializer.Deserialize<StageMediaImages>(stageMediaJson);
 
+                            // Download poster to media folder if doesnt exist.
                             if (images?.Posters != null && images.Posters.Count > 0 && (!string.IsNullOrWhiteSpace(posterPath) && !System.IO.File.Exists(posterPath)))
                             {
                                 var posterUrl = images.Posters[0];
                                 var posterResponse = await stageMediaClient.GetAsync(posterUrl, cancellationToken).ConfigureAwait(false);
                                 posterResponse.EnsureSuccessStatusCode();
                                 var posterBytes = await posterResponse.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
-                                await System.IO.File.WriteAllBytesAsync(posterPath, posterBytes, cancellationToken).ConfigureAwait(false);
+                                await File.WriteAllBytesAsync(posterPath, posterBytes, cancellationToken).ConfigureAwait(false);
                             }
 
                             if (images?.Performers != null && images.Performers.Count > 0)
@@ -226,6 +242,7 @@ namespace Jellyfin.Plugin.Encora.Providers
                     // If metadata.HasSubtitles, request and download them
                     if (recording.Metadata?.HasSubtitles == true && !string.IsNullOrWhiteSpace(encoraId) && !string.IsNullOrWhiteSpace(movieDir))
                     {
+                        _logger.LogInformation("[Encora] Fetching subtitles for recording {EncoraId}", encoraId);
                         try
                         {
                             var subtitlesUrl = $"https://encora.it/api/recording/{encoraId}/subtitles";
@@ -246,20 +263,18 @@ namespace Jellyfin.Plugin.Encora.Providers
                                         continue;
                                     }
 
-                                    // Use ISO 639-1 two-letter code, fallback to "en" if not available
                                     var lang = sub.Language?.Length >= 2
                                         ? sub.Language[..2].ToLowerInvariant()
                                         : "en";
 
                                     var ext = sub.FileType.ToLowerInvariant();
                                     var subFileName = $"{mediaFileName}.{lang}.{ext}";
-                                    var subFilePath = System.IO.Path.Combine(movieDir, subFileName);
+                                    var subFilePath = Path.Combine(movieDir, subFileName);
 
-                                    // Download and save the subtitle file
                                     var subFileResponse = await client.GetAsync(sub.Url, cancellationToken).ConfigureAwait(false);
                                     subFileResponse.EnsureSuccessStatusCode();
                                     var subFileBytes = await subFileResponse.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
-                                    await System.IO.File.WriteAllBytesAsync(subFilePath, subFileBytes, cancellationToken).ConfigureAwait(false);
+                                    await File.WriteAllBytesAsync(subFilePath, subFileBytes, cancellationToken).ConfigureAwait(false);
                                     subtitlePaths.Add(subFilePath);
                                     movie.HasSubtitles = true;
                                 }
@@ -303,22 +318,25 @@ namespace Jellyfin.Plugin.Encora.Providers
 
                     var shouldAddMasterDirector = Plugin.Instance?.Configuration?.AddMasterDirector ?? false;
 
-                    _logger.LogInformation("[Encora] Should add master as director: {MasterDirector}", shouldAddMasterDirector);
-
                     if (recording.Cast != null)
                     {
                         EncoraCastMember.MapCastToResult(result, recording.Cast, headshots, recording.Master, shouldAddMasterDirector);
                     }
                 }
+                else
+                {
+                    _logger.LogInformation("[Encora] ❌ Failed to fetch metadata from Encora for ID {EncoraId} - Falling back to NFO metadata for {Path}", encoraId, info.Path);
+                    return await ParseNfoMetadata(info, cancellationToken).ConfigureAwait(false);
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[Encora] ❌ Failed to fetch metadata from Encora for ID {EncoraId}", encoraId);
-                _logger.LogInformation("[Encora] Falling back to NFO metadata for {Path}", info.Path);
-                // Fallback: Try to load metadata from NFO file
-                return await GetNfoMetadataAsync(info, cancellationToken).ConfigureAwait(false);
+                _logger.LogInformation("[Encora] ❌ Error while fetching metadata from Encora for ID {EncoraId} - Falling back to NFO metadata for {Path}", encoraId, info.Path);
+                _logger.LogError(ex, "[Encora] Error details: {Ex}", ex);
+                return await ParseNfoMetadata(info, cancellationToken).ConfigureAwait(false);
             }
 
+            await ThumbGenerator.GenerateThumbPng(_logger, _mediaEncoder, movieDir, info).ConfigureAwait(false);
             return result;
         }
 
@@ -329,37 +347,42 @@ namespace Jellyfin.Plugin.Encora.Providers
         /// <returns>The Encora ID if found; otherwise, null.</returns>
         private string? ExtractEncoraId(string path)
         {
+            _logger.LogInformation("[Encora] Extracting Encora ID from path: {Path}", path);
             // Try to extract from path
             var match = Regex.Match(path, @"{e-(\d+)}", RegexOptions.IgnoreCase);
             if (match.Success)
             {
+                _logger.LogInformation("[Encora] Found Encora ID in path: {Path} - ID: {Id}", path, match.Groups[1].Value);
                 return match.Groups[1].Value;
             }
 
             // Fallback: look for .encora-<id> file in the directory
-            var directory = System.IO.Path.GetDirectoryName(path);
+            var directory = Path.GetDirectoryName(path);
             if (!string.IsNullOrWhiteSpace(directory))
             {
-                var files = System.IO.Directory.GetFiles(directory, ".encora-*");
+                var files = Directory.GetFiles(directory, ".encora-*");
                 foreach (var file in files)
                 {
-                    var fileName = System.IO.Path.GetFileName(file);
+                    var fileName = Path.GetFileName(file);
                     var fileMatch = Regex.Match(fileName, @"\.encora-(\d+)", RegexOptions.IgnoreCase);
                     if (fileMatch.Success)
                     {
+                        _logger.LogInformation("[Encora] Found Encora ID in file: {FileName} - ID: {Id}", fileName, fileMatch.Groups[1].Value);
                         return fileMatch.Groups[1].Value;
                     }
                 }
 
                 // Fallback: check for .encora-id file
-                var encoraIdFile = System.IO.Path.Combine(directory, ".encora-id");
-                if (System.IO.File.Exists(encoraIdFile))
+                var encoraIdFile = Path.Combine(directory, ".encora-id");
+                if (File.Exists(encoraIdFile))
                 {
-                    var id = System.IO.File.ReadAllText(encoraIdFile).Trim();
+                    var id = File.ReadAllText(encoraIdFile).Trim();
+                    _logger.LogInformation("[Encora] Found Encora ID in .encora-id file: {Id}", id);
                     return string.IsNullOrWhiteSpace(id) ? null : id;
                 }
             }
 
+            _logger.LogInformation("[Encora] No Encora ID found in path: {Path}", path);
             return null;
         }
 
@@ -480,12 +503,115 @@ namespace Jellyfin.Plugin.Encora.Providers
             return client.GetAsync(url, cancellationToken);
         }
 
-        // Helper method to read NFO metadata (uses built-in NfoMetadataProvider)
-        private async Task<MetadataResult<Movie>> GetNfoMetadataAsync(MovieInfo info, CancellationToken cancellationToken)
+        /// <summary>
+        /// Fetches data from the NFO file as a fallback.
+        /// </summary>
+        /// <param name="info">The movie info.</param>
+        /// <param name="cancellationToken">A cancellation token for the await.</param>
+        /// <returns>A task.</returns>
+        private async Task<MetadataResult<Movie>> ParseNfoMetadata(MovieInfo info, CancellationToken cancellationToken)
         {
-            _logger.LogInformation("[Encora] GetNfoMetadataAsync called");
-            var nfoProvider = new NfoMetadataProvider();
-            return await nfoProvider.GetMetadata(info, cancellationToken).ConfigureAwait(false);
+            _logger.LogInformation("[Encora] [NFO] Processing NFO metadata for {Path}", info.Path);
+            var result = new MetadataResult<Movie>();
+
+            var movieDir = Path.GetDirectoryName(info.Path);
+            if (string.IsNullOrWhiteSpace(movieDir))
+            {
+                return result;
+            }
+
+            await ThumbGenerator.GenerateThumbPng(_logger, _mediaEncoder, movieDir, info).ConfigureAwait(false);
+
+            var nfoPath = Path.Combine(movieDir, "movie.nfo");
+            if (!File.Exists(nfoPath))
+            {
+                var fileNameNoExt = Path.GetFileNameWithoutExtension(info.Path);
+                nfoPath = Path.Combine(movieDir, fileNameNoExt + ".nfo");
+                if (!File.Exists(nfoPath))
+                {
+                    _logger.LogInformation("[Encora] [NFO] No NFO file found at {NfoPath}", nfoPath);
+                    return result;
+                }
+            }
+
+            var nfoContent = await File.ReadAllTextAsync(nfoPath, cancellationToken).ConfigureAwait(false);
+            var doc = XDocument.Parse(nfoContent);
+            var movieElem = doc.Root;
+            if (movieElem == null || !movieElem.Name.LocalName.Equals("movie", StringComparison.OrdinalIgnoreCase))
+            {
+                return result;
+            }
+
+            var movie = new Movie
+            {
+                Name = movieElem.Element("title")?.Value,
+                Overview = movieElem.Element("plot")?.Value,
+                OriginalTitle = movieElem.Element("originaltitle")?.Value,
+                SortName = movieElem.Element("sorttitle")?.Value
+            };
+
+            if (DateTime.TryParse(movieElem.Element("premiered")?.Value, out var premiere))
+            {
+                movie.PremiereDate = premiere;
+            }
+            else if (DateTime.TryParse(movieElem.Element("releasedate")?.Value, out var release))
+            {
+                movie.PremiereDate = release;
+            }
+
+            if (int.TryParse(movieElem.Element("year")?.Value, out var year))
+            {
+                movie.ProductionYear = year;
+            }
+
+            var studio = movieElem.Element("studio")?.Value;
+            if (!string.IsNullOrWhiteSpace(studio))
+            {
+                movie.AddStudio(studio);
+            }
+
+            foreach (var genreElem in movieElem.Elements("genre"))
+            {
+                if (!string.IsNullOrWhiteSpace(genreElem.Value))
+                {
+                    movie.AddGenre(genreElem.Value);
+                }
+            }
+
+            foreach (var certElem in movieElem.Elements("certification"))
+            {
+                if (!string.IsNullOrWhiteSpace(certElem.Value))
+                {
+                    movie.OfficialRating = "NFT";
+                }
+            }
+
+            var posterUrl = movieElem.Elements("thumb")
+                .FirstOrDefault(e => (string?)e.Attribute("aspect") == "poster")?.Value;
+            if (!string.IsNullOrWhiteSpace(posterUrl))
+            {
+                movie.AddImage(new ItemImageInfo { Path = posterUrl, Type = ImageType.Primary });
+            }
+
+            foreach (var actorElem in movieElem.Elements("actor"))
+            {
+                var name = actorElem.Element("name")?.Value;
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    result.AddPerson(new PersonInfo
+                    {
+                        Name = name,
+                        Role = actorElem.Element("role")?.Value,
+                        ImageUrl = actorElem.Element("thumb")?.Value,
+                        Type = Data.Enums.PersonKind.Actor
+                    });
+                }
+            }
+
+            result.Item = movie;
+            result.HasMetadata = true;
+            _logger.LogInformation("[Encora] [NFO] ✅ Successfully processed NFO metadata for {Path}", info.Path);
+            return result;
         }
     }
 }
