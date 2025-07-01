@@ -76,7 +76,7 @@ namespace Jellyfin.Plugin.Encora.Models
                         var seekSeconds = duration.TotalSeconds * (0.15 + (0.45 * random.NextDouble()));
                         var seekTime = TimeSpan.FromSeconds(seekSeconds);
 
-                        var thumbArgs = $"-ss {seekTime:hh\\:mm\\:ss} -i \"{info.Path}\" -frames:v 1 -vf \"scale=320:-1\" -y \"{thumbPath}\"";
+                        var thumbArgs = $"-ss {seekTime:hh\\:mm\\:ss} -i \"{info.Path}\" -frames:v 1 -vf \"scale=16:-1\" -y \"{thumbPath}\"";
                         logger.LogInformation("[Encora] [Thumb] Extracting thumb.png from media file {Path} at time {Time}", info.Path, seekTime);
 
                         var process = new System.Diagnostics.Process
