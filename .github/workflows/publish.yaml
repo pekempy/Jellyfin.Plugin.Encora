@@ -103,33 +103,42 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
 
       - name: Update plugin manifest
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          TAG: ${{ github.event.release.tag_name }}
+          CHECKSUM: ${{ steps.manifest.outputs.checksum }}
+          ZIP_NAME: ${{ steps.manifest.outputs.zip_name }}
+          REPO: ${{ github.repository }}
+          CHANGELOG: ${{ github.event.release.body }}
         run: |
-          VERSION="${{ needs.build.outputs.version }}"
-          TAG="${{ github.event.release.tag_name }}"
-          CHECKSUM="${{ steps.manifest.outputs.checksum }}"
-          ZIP_NAME="${{ steps.manifest.outputs.zip_name }}"
-          SOURCE_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${ZIP_NAME}"
-          CHANGELOG="${{ github.event.release.body || 'See release notes' }}"
+          SOURCE_URL="https://github.com/${REPO}/releases/download/${TAG}/${ZIP_NAME}"
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          # Escape changelog for JSON (replace newlines with \n)
-          CHANGELOG_JSON=$(echo "$CHANGELOG" | jq -Rs .)
+          # Escape changelog for JSON (replace newlines with \n); env vars are never re-parsed by the
+          # shell, so backticks/quotes/etc. in the release body can't be interpreted as shell syntax here.
+          CHANGELOG_JSON=$(printf '%s' "${CHANGELOG:-See release notes}" | jq -Rs .)
 
-          # Add new version to manifest (dedupe by version, sort newest-first)
-          jq --argjson v "{
-            \"version\": \"$VERSION\",
-            \"changelog\": $CHANGELOG_JSON,
-            \"targetAbi\": \"10.11.0.0\",
-            \"sourceUrl\": \"$SOURCE_URL\",
-            \"checksum\": \"$CHECKSUM\",
-            \"timestamp\": \"$TIMESTAMP\"
-          }" '
+          # Add new version to manifest (dedupe by version, sort newest-first). Every value is passed via
+          # --arg/--argjson so jq handles JSON escaping - nothing is interpolated into the jq program text.
+          jq --arg version "$VERSION" \
+             --argjson changelog "$CHANGELOG_JSON" \
+             --arg targetAbi "10.11.0.0" \
+             --arg sourceUrl "$SOURCE_URL" \
+             --arg checksum "$CHECKSUM" \
+             --arg timestamp "$TIMESTAMP" '
             def vkey:
               (.version
                | sub("^v";"")
                | split(".")
                | map(tonumber? // 0));
-            .[0].versions = ((.[0].versions + [$v]) | unique_by(.version) | sort_by(vkey) | reverse)
+            .[0].versions = ((.[0].versions + [{
+              version: $version,
+              changelog: $changelog,
+              targetAbi: $targetAbi,
+              sourceUrl: $sourceUrl,
+              checksum: $checksum,
+              timestamp: $timestamp
+            }]) | unique_by(.version) | sort_by(vkey) | reverse)
           ' manifest.json > manifest.json.tmp
           mv manifest.json.tmp manifest.json
 
