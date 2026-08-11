@@ -1,4 +1,4 @@
-![Encora Reprise](https://raw.githubusercontent.com/pekempy/Jellyfin.Plugin.Encora/master/JellyfinPluginBanner.png)
+![Encora Reprise](https://raw.githubusercontent.com/pekempy/Jellyfin.Plugin.Encora/main/JellyfinPluginBanner.png)
 
 # Encora Jellyfin Agent
 
@@ -47,7 +47,7 @@ This plugin is under active development and has a couple of known quirks:
 1. Go to **Jellyfin Admin Dashboard** → **Plugins** → **Repositories** → **+ Add Repository**.
 2. Set the **Repository Name** to `Encora`, and the **Repository URL** to:
    ```
-   https://raw.githubusercontent.com/pekempy/Jellyfin.Plugin.Encora/master/manifest.json
+   https://raw.githubusercontent.com/pekempy/Jellyfin.Plugin.Encora/main/manifest.json
    ```
 3. Save, then go to the **Catalog** tab, find **Encora** under **General**, and install it.
 4. Restart the Jellyfin server.
