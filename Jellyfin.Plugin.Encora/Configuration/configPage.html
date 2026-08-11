@@ -6,39 +6,1072 @@
 </head>
 <body>
     <div id="EncoraConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
+        <style>
+            /* Theme tokens: prefer Jellyfin's actual active-theme colors (so this page looks
+               correct under Light/PurpleHaze/BlueRadiance/etc, not just the default Dark theme),
+               falling back to Dark theme's own values for older Jellyfin versions that predate
+               these custom properties. */
+            #EncoraConfigPage {
+                --encora-accent: var(--jf-palette-primary-main, #00a4dc);
+            }
+
+            #EncoraConfigPage .encoraInlineLink {
+                color: var(--encora-accent);
+                font-weight: inherit;
+                text-decoration: underline;
+                text-decoration-color: rgba(255, 255, 255, 0.35);
+                text-decoration-color: color-mix(in srgb, var(--encora-accent) 45%, transparent);
+                text-underline-offset: 0.15em;
+            }
+
+            #EncoraConfigPage .encoraInlineLink:hover {
+                text-decoration-color: currentColor;
+            }
+
+            #EncoraConfigPage .encoraLayout {
+                display: flex;
+                align-items: flex-start;
+                gap: 2.5em;
+            }
+
+            #EncoraConfigPage .encoraNav {
+                display: flex;
+                flex-direction: column;
+                flex-shrink: 0;
+                width: 200px;
+                gap: 0.2em;
+            }
+
+            #EncoraConfigPage .encoraNavButton {
+                display: block;
+                width: 100%;
+                text-align: left;
+                padding: 0.6em 0.9em;
+                border: none;
+                border-left: 3px solid transparent;
+                background: none;
+                color: inherit;
+                font-size: 104%;
+                cursor: pointer;
+                border-radius: 0.2em;
+                opacity: 0.7;
+                transition: background-color 0.15s ease, opacity 0.15s ease;
+            }
+
+            #EncoraConfigPage .encoraNavButton:hover {
+                background: rgba(255, 255, 255, 0.08);
+                background: color-mix(in srgb, currentColor 8%, transparent);
+                opacity: 1;
+            }
+
+            #EncoraConfigPage .encoraNavButton:focus-visible,
+            #EncoraConfigPage .encoraSegmentButton:focus-visible,
+            #EncoraConfigPage .encoraVarChip:focus-visible {
+                outline: 2px solid var(--encora-accent);
+                outline-offset: 1px;
+            }
+
+            #EncoraConfigPage .encoraNavButton-active {
+                border-left-color: var(--encora-accent);
+                background: rgba(0, 164, 220, 0.12);
+                background: color-mix(in srgb, var(--encora-accent) 12%, transparent);
+                opacity: 1;
+            }
+
+            #EncoraConfigPage .encoraContent {
+                flex-grow: 1;
+                min-width: 0;
+            }
+
+            #EncoraConfigPage .encoraVarPalette {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.4em;
+                margin: 0.5em 0;
+            }
+
+            #EncoraConfigPage .encoraVarChip {
+                border: 1px solid rgba(255, 255, 255, 0.3);
+                border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+                background: rgba(0, 164, 220, 0.12);
+                background: color-mix(in srgb, var(--encora-accent) 12%, transparent);
+                color: inherit;
+                border-radius: 1em;
+                padding: 0.25em 0.8em;
+                font-size: 90%;
+                font-family: monospace;
+                cursor: pointer;
+                transition: background-color 0.15s ease;
+            }
+
+            #EncoraConfigPage .encoraVarChip:hover {
+                background: rgba(0, 164, 220, 0.28);
+                background: color-mix(in srgb, var(--encora-accent) 28%, transparent);
+            }
+
+            #EncoraConfigPage .encoraFormatPreview {
+                margin-top: 0.4em;
+                padding: 0.6em 0.9em;
+                border-radius: 0.3em;
+                background: rgba(255, 255, 255, 0.06);
+                background: color-mix(in srgb, currentColor 6%, transparent);
+                font-style: italic;
+            }
+
+            #EncoraConfigPage .encoraFormatPreview::before {
+                content: "Preview: ";
+                font-style: normal;
+                opacity: 0.7;
+            }
+
+            #EncoraConfigPage .encoraVarTable {
+                width: 100%;
+                border-collapse: collapse;
+                margin: 0.5em 0 1.5em;
+            }
+
+            #EncoraConfigPage .encoraVarTable th,
+            #EncoraConfigPage .encoraVarTable td {
+                text-align: left;
+                padding: 0.4em 0.8em;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+                border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+            }
+
+            #EncoraConfigPage .encoraVarTable tr:hover td {
+                background: rgba(255, 255, 255, 0.03);
+                background: color-mix(in srgb, currentColor 3%, transparent);
+            }
+
+            #EncoraConfigPage .encoraVarTable code {
+                font-weight: bold;
+            }
+
+            #EncoraConfigPage .encoraMappingTable {
+                width: 100%;
+                max-width: 40em;
+                border-collapse: collapse;
+                margin: 0.5em 0 1em;
+            }
+
+            #EncoraConfigPage .encoraMappingTable th,
+            #EncoraConfigPage .encoraMappingTable td {
+                text-align: left;
+                padding: 0.4em 0.8em 0.4em 0;
+            }
+
+            #EncoraConfigPage .encoraMappingTable th {
+                opacity: 0.7;
+                font-weight: normal;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+                border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+            }
+
+            #EncoraConfigPage .encoraMappingTable select {
+                width: 100%;
+                max-width: 22em;
+                cursor: pointer;
+                box-sizing: border-box;
+                border: 1px solid rgba(255, 255, 255, 0.3);
+                border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+                border-radius: 0.35em;
+                background-color: rgba(255, 255, 255, 0.05);
+                background-color: color-mix(in srgb, currentColor 5%, transparent);
+                padding: 0.4em 1.8em 0.4em 0.7em;
+                appearance: none;
+                -webkit-appearance: none;
+                -moz-appearance: none;
+                background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+                background-position: right 0.9em center, right 0.65em center;
+                background-size: 0.5em 0.5em, 0.5em 0.5em;
+                background-repeat: no-repeat;
+                transition: background-color 0.15s ease, border-color 0.15s ease;
+            }
+
+            #EncoraConfigPage .encoraMappingTable select:hover {
+                border-color: var(--encora-accent);
+                background-color: rgba(255, 255, 255, 0.09);
+                background-color: color-mix(in srgb, currentColor 9%, transparent);
+            }
+
+            #EncoraConfigPage .encoraMappingTable select:focus {
+                outline: none;
+                border-color: var(--encora-accent);
+                box-shadow: 0 0 0 2px rgba(0, 164, 220, 0.3);
+                box-shadow: 0 0 0 2px color-mix(in srgb, var(--encora-accent) 30%, transparent);
+            }
+
+            #EncoraConfigPage .encoraLibraryScopeList {
+                display: flex;
+                flex-direction: column;
+                gap: 0.4em;
+                margin: 0.5em 0 1.2em;
+            }
+
+            #EncoraConfigPage .encoraLibraryScopeRow {
+                display: flex;
+                align-items: center;
+                gap: 0.6em;
+            }
+
+            #EncoraConfigPage .encoraLibraryScopeRow input[type="checkbox"] {
+                width: 1.1em;
+                height: 1.1em;
+                accent-color: var(--encora-accent);
+            }
+
+            #EncoraConfigPage .encoraSegmented {
+                display: inline-flex;
+                border: 1px solid rgba(255, 255, 255, 0.25);
+                border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+                border-radius: 0.4em;
+                overflow: hidden;
+                margin: 0.5em 0 1em;
+            }
+
+            #EncoraConfigPage .encoraSegmentButton {
+                border: none;
+                background: none;
+                color: inherit;
+                padding: 0.5em 1em;
+                cursor: pointer;
+                opacity: 0.7;
+                border-right: 1px solid rgba(255, 255, 255, 0.15);
+                border-right: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+                transition: background-color 0.15s ease, opacity 0.15s ease;
+            }
+
+            #EncoraConfigPage .encoraSegmentButton:last-child {
+                border-right: none;
+            }
+
+            #EncoraConfigPage .encoraSegmentButton:hover {
+                background: rgba(255, 255, 255, 0.08);
+                background: color-mix(in srgb, currentColor 8%, transparent);
+                opacity: 1;
+            }
+
+            #EncoraConfigPage .encoraSegmentButton-active {
+                background: rgba(0, 164, 220, 0.25);
+                background: color-mix(in srgb, var(--encora-accent) 25%, transparent);
+                opacity: 1;
+            }
+
+            #EncoraConfigPage .encoraTree {
+                font-family: monospace;
+                font-size: 95%;
+                background: rgba(255, 255, 255, 0.04);
+                background: color-mix(in srgb, currentColor 4%, transparent);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+                border-radius: 0.4em;
+                padding: 1em 1.2em;
+                line-height: 1.9;
+                overflow-x: auto;
+            }
+
+            #EncoraConfigPage .encoraTreeRow {
+                white-space: pre;
+            }
+
+            #EncoraConfigPage .encoraIdBadge {
+                background: rgba(0, 164, 220, 0.28);
+                background: color-mix(in srgb, var(--encora-accent) 28%, transparent);
+                border: 1px solid rgba(0, 164, 220, 0.6);
+                border: 1px solid color-mix(in srgb, var(--encora-accent) 60%, transparent);
+                border-radius: 0.3em;
+                padding: 0 0.3em;
+            }
+
+            #EncoraConfigPage .encoraTreeNote {
+                font-family: inherit;
+                white-space: normal;
+                opacity: 0.75;
+                margin-top: 0.5em;
+                font-size: 92%;
+            }
+
+            #EncoraConfigPage .encoraTreeArrow {
+                text-align: center;
+                font-size: 130%;
+                opacity: 0.5;
+                margin: 0.3em 0;
+            }
+
+            #EncoraConfigPage .encoraResultCard {
+                border: 1px solid rgba(0, 164, 220, 0.4);
+                border: 1px solid color-mix(in srgb, var(--encora-accent) 40%, transparent);
+                border-radius: 0.4em;
+                padding: 0.7em 1em;
+                display: flex;
+                flex-direction: column;
+                gap: 0.35em;
+            }
+
+            #EncoraConfigPage .encoraResultRow {
+                display: flex;
+                gap: 0.6em;
+                align-items: baseline;
+            }
+
+            #EncoraConfigPage .encoraResultLabel {
+                opacity: 0.65;
+                min-width: 5em;
+                font-size: 90%;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+            }
+
+            #EncoraConfigPage .encoraResultValue {
+                font-weight: bold;
+                color: var(--encora-accent);
+            }
+
+            /* Collapsible sections are hand-rolled with a header + sibling content div, toggled by
+               our own JS click listener (see encoraWireCollapsible), rather than native <details>.
+               Jellyfin's dashboard intercepts/prevents the native <summary> click behavior. */
+            #EncoraConfigPage .encoraCollapsibleHeader {
+                cursor: pointer;
+            }
+
+            #EncoraConfigPage .encoraCollapsibleHeader::before {
+                content: "▸ ";
+                display: inline-block;
+                transition: transform 0.15s;
+            }
+
+            #EncoraConfigPage .encoraCollapsibleHeader.encoraExpanded::before {
+                transform: rotate(90deg);
+            }
+
+            #EncoraConfigPage .encoraSubsectionTitle {
+                font-size: 95%;
+                opacity: 0.75;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+                margin: 1.2em 0 0.4em;
+            }
+
+            @media (max-width: 700px) {
+                #EncoraConfigPage .encoraLayout {
+                    flex-direction: column;
+                }
+
+                #EncoraConfigPage .encoraNav {
+                    flex-direction: row;
+                    width: 100%;
+                    overflow-x: auto;
+                }
+
+                #EncoraConfigPage .encoraNavButton {
+                    border-left: none;
+                    border-bottom: 3px solid transparent;
+                    white-space: nowrap;
+                }
+
+                #EncoraConfigPage .encoraNavButton-active {
+                    border-left-color: transparent;
+                    border-bottom-color: #00a4dc;
+                }
+            }
+        </style>
         <div data-role="content">
             <div class="content-primary">
-                <form id="EncoraConfigForm" class="configForm">
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="EncoraAPIKey">EncoraAPIKey</label>
-                        <input id="EncoraAPIKey" name="Encora API Key" type="text" is="emby-input" />
-                        <div class="fieldDescription">Your API Key for Encora</div>
+                <div class="encoraLayout">
+                    <div class="encoraNav">
+                        <button type="button" class="encoraNavButton encoraNavButton-active" data-tabindex="0">Info</button>
+                        <button type="button" class="encoraNavButton" data-tabindex="1">API Keys</button>
+                        <button type="button" class="encoraNavButton" data-tabindex="2">Videos - Movie Library</button>
+                        <button type="button" class="encoraNavButton" data-tabindex="3">Videos - TV Library</button>
+                        <button type="button" class="encoraNavButton" data-tabindex="4">Audios - Music Library</button>
                     </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="StageMediaAPIKey">StageMedia API Key</label>
-                        <input id="StageMediaAPIKey" name="StageMediaAPIKey" type="text" is="emby-input" />
-                        <div class="fieldDescription">Your API Key for StageMedia</div>
+
+                    <div class="encoraContent">
+                        <form id="EncoraConfigForm" class="configForm">
+
+                            <!-- ============ Info ============ -->
+                            <div class="EncoraTabContent" data-tabindex="0">
+                                <h2 class="sectionTitle">Encora</h2>
+                                <div class="fieldDescription">
+                                    Fetches theatrical performance metadata from <a class="encoraInlineLink" href="https://encora.it" target="_blank" rel="noopener noreferrer">Encora.it</a>, plus posters and headshots from <a class="encoraInlineLink" href="https://stagemedia.me" target="_blank" rel="noopener noreferrer">StageMedia.me</a>.
+                                </div>
+                                <div class="fieldDescription" style="margin-top: 0.5em;">
+                                    Installed version: <strong id="EncoraVersionText">Loading&hellip;</strong>
+                                </div>
+                                <div class="fieldDescription">
+                                    <a is="emby-linkbutton" href="https://github.com/pekempy/Jellyfin.Plugin.Encora/releases" target="_blank" rel="noopener noreferrer">Release notes &amp; changelog (GitHub)</a>
+                                    &nbsp;&middot;&nbsp;
+                                    <a is="emby-linkbutton" href="https://github.com/pekempy/Jellyfin.Plugin.Encora" target="_blank" rel="noopener noreferrer">Source / README</a>
+                                </div>
+
+                                <h2 class="sectionTitle encoraCollapsibleHeader" style="margin-top: 1.5em;">Title format variables</h2>
+                                <div class="encoraCollapsibleContent hide">
+                                <div class="fieldDescription">Every Title Format field on the Movie/TV/Audio tabs has its own click-to-insert palette showing exactly which of these apply to it. Every value comes from the Encora recording that matched the file (or, for Series/Season/Artist, whichever file inside that folder was used to look it up).</div>
+                                <table class="encoraVarTable">
+                                    <tr><th>Variable</th><th>Maps to</th><th>Available in</th></tr>
+                                    <tr><td><code>{show}</code></td><td>Show name. If "Act 1"/"Act 2" etc. is detected in the filename, it's appended (Movies only).</td><td>Movie, Series, Artist</td></tr>
+                                    <tr><td><code>{date}</code></td><td>Long-form date, e.g. "December 31, 2024". Appends "(matinée)" and, for episodes/tracks, "(Act N)" automatically when detected.</td><td>Movie, Episode, Album</td></tr>
+                                    <tr><td><code>{date_iso}</code></td><td>ISO date, e.g. "2024-12-31"</td><td>Movie, Episode, Album</td></tr>
+                                    <tr><td><code>{date_usa}</code></td><td>US-order date, e.g. "12-31-2024"</td><td>Movie, Episode, Album</td></tr>
+                                    <tr><td><code>{date_numeric}</code></td><td>Day-first numeric date, e.g. "31-12-2024"</td><td>Movie, Episode, Album</td></tr>
+                                    <tr><td><code>{tour}</code></td><td>Tour name</td><td>Movie, Season, Album</td></tr>
+                                    <tr><td><code>{master}</code></td><td>Name of the recording's master (whoever recorded/filmed it)</td><td>Movie, Episode, Album</td></tr>
+                                    <tr><td><code>{venue}</code></td><td>Venue name</td><td>Movie, Episode, Series, Season, Artist, Album</td></tr>
+                                    <tr><td><code>{city}</code></td><td>City</td><td>Movie, Episode, Series, Season, Artist, Album</td></tr>
+                                    <tr><td><code>{act}</code></td><td>Act number, only present when "Act N" is detected in the filename</td><td>Track</td></tr>
+                                </table>
+                                <div class="fieldDescription">Episode/Track titles don't have <code>{show}</code>/<code>{tour}</code> - those come from the Series/Season or Artist/Album instead.</div>
+                                </div>
+                            </div>
+
+                            <!-- ============ API Keys ============ -->
+                            <div class="EncoraTabContent hide" data-tabindex="1">
+                                <div class="inputContainer">
+                                    <label class="inputLabel inputLabelUnfocused" for="EncoraAPIKey">Encora API Key</label>
+                                    <input id="EncoraAPIKey" name="EncoraAPIKey" type="text" is="emby-input" />
+                                    <div class="fieldDescription">Your API Key for Encora</div>
+                                </div>
+                                <div class="inputContainer">
+                                    <label class="inputLabel inputLabelUnfocused" for="StageMediaAPIKey">StageMedia API Key</label>
+                                    <input id="StageMediaAPIKey" name="StageMediaAPIKey" type="text" is="emby-input" />
+                                    <div class="fieldDescription">Your API Key for StageMedia</div>
+                                </div>
+                                <div class="inputContainer">
+                                    <label class="inputLabel inputLabelUnfocused" for="AutoRefreshIntervalHours">Auto-refresh interval (hours)</label>
+                                    <input id="AutoRefreshIntervalHours" name="AutoRefreshIntervalHours" type="number" min="0" step="1" is="emby-input" />
+                                    <div class="fieldDescription">Periodically re-checks items Encora has already matched, so subtitle/cast/NFT changes on Encora's side get picked up automatically. Set to 0 to turn this off. This runs as the "Refresh Encora Metadata" task under Dashboard &rarr; Scheduled Tasks &rarr; Encora - if you change the number here after it's already run once, either restart Jellyfin or edit the schedule directly there for the new interval to take effect.</div>
+                                </div>
+                            </div>
+
+                            <!-- ============ Videos - Movie Library ============ -->
+                            <div class="EncoraTabContent hide" data-tabindex="2">
+                                <div class="checkboxContainer checkboxContainer-withDescription">
+                                    <label class="emby-checkbox-label">
+                                        <input id="EnableMovieMatching" name="EnableMovieMatching" type="checkbox" is="emby-checkbox" />
+                                        <span>Match Movie libraries against Encora</span>
+                                    </label>
+                                    <div class="fieldDescription">Each video file is matched as a standalone recording.</div>
+                                </div>
+
+                                <h2 class="sectionTitle encoraCollapsibleHeader encoraExpanded">Which libraries</h2>
+                                <div class="encoraCollapsibleContent">
+                                <div class="fieldDescription">By default this applies to every Movie library on your server. If you only want it to check specific libraries, tick them below and leave the rest unticked.</div>
+                                <div id="MovieLibraryScopeList" class="encoraLibraryScopeList">
+                                    <div class="fieldDescription">Loading your libraries&hellip;</div>
+                                </div>
+                                </div>
+
+                                <h2 class="sectionTitle encoraCollapsibleHeader">Library Structure</h2>
+                                <div class="encoraCollapsibleContent hide">
+                                <div class="fieldDescription">How Encora identifies which recording a video file is. Pick the convention you use (or plan to use) below.</div>
+                                <div class="encoraSegmented" id="MovieIdConventionSwitch">
+                                    <button type="button" class="encoraSegmentButton encoraSegmentButton-active" data-convention="inline">ID in filename</button>
+                                    <button type="button" class="encoraSegmentButton" data-convention="folder">ID in folder name</button>
+                                    <button type="button" class="encoraSegmentButton" data-convention="marker">.encora-&lt;id&gt; file</button>
+                                    <button type="button" class="encoraSegmentButton" data-convention="idfile">.encora-id file</button>
+                                </div>
+
+                                <div class="encoraTree" data-convention-group="movie" data-convention="inline">
+                                    <div class="encoraTreeRow">📁 Movies/</div>
+                                    <div class="encoraTreeRow">  🎬 Hadestown <span class="encoraIdBadge">{e-123456}</span>.mkv</div>
+                                </div>
+                                <div class="encoraTree hide" data-convention-group="movie" data-convention="folder">
+                                    <div class="encoraTreeRow">📁 Movies/</div>
+                                    <div class="encoraTreeRow">  📁 Hadestown <span class="encoraIdBadge">{e-123456}</span>/</div>
+                                    <div class="encoraTreeRow">    🎬 Hadestown.mkv</div>
+                                </div>
+                                <div class="encoraTree hide" data-convention-group="movie" data-convention="marker">
+                                    <div class="encoraTreeRow">📁 Movies/</div>
+                                    <div class="encoraTreeRow">  📁 Hadestown/</div>
+                                    <div class="encoraTreeRow">    🎬 Hadestown.mkv</div>
+                                    <div class="encoraTreeRow">    📄 <span class="encoraIdBadge">.encora-123456</span></div>
+                                </div>
+                                <div class="encoraTree hide" data-convention-group="movie" data-convention="idfile">
+                                    <div class="encoraTreeRow">📁 Movies/</div>
+                                    <div class="encoraTreeRow">  📁 Hadestown/</div>
+                                    <div class="encoraTreeRow">    🎬 Hadestown.mkv</div>
+                                    <div class="encoraTreeRow">    📄 <span class="encoraIdBadge">.encora-id</span> &rarr; contains "123456"</div>
+                                </div>
+
+                                <div class="encoraTreeArrow">&#8595;</div>
+                                <div class="encoraResultCard">
+                                    <div class="encoraResultRow">
+                                        <span class="encoraResultLabel">Movie</span>
+                                        <span class="encoraResultValue" id="MovieStructureResult"></span>
+                                    </div>
+                                </div>
+                                </div>
+
+                                <h2 class="sectionTitle encoraCollapsibleHeader encoraExpanded">Title</h2>
+                                <div class="encoraCollapsibleContent">
+                                <div class="inputContainer">
+                                    <label class="inputLabel inputLabelUnfocused" for="MovieTitleFormat">Title format</label>
+                                    <input id="MovieTitleFormat" name="MovieTitleFormat" type="text" is="emby-input" />
+                                    <div id="MovieFormatVars" class="encoraVarPalette"></div>
+                                    <div id="MovieFormatPreview" class="encoraFormatPreview"></div>
+                                </div>
+                                <div class="inputContainer">
+                                    <label class="inputLabel inputLabelUnfocused" for="MovieDateReplaceChar">Missing Date Replace Character</label>
+                                    <input id="MovieDateReplaceChar" name="MovieDateReplaceChar" type="text" is="emby-input" />
+                                    <div class="fieldDescription">For dates missing the day / month, which character should be used to replace (e.g. '2024-11-xx')</div>
+                                </div>
+                                </div>
+
+                                <h2 class="sectionTitle encoraCollapsibleHeader">Metadata</h2>
+                                <div class="encoraCollapsibleContent hide">
+
+                                <h3 class="encoraSubsectionTitle">Credits &amp; descriptions</h3>
+                                <div class="checkboxContainer checkboxContainer-withDescription">
+                                    <label class="emby-checkbox-label">
+                                        <input id="MovieAddMasterDirector" name="MovieAddMasterDirector" type="checkbox" is="emby-checkbox" />
+                                        <span>Credit the recorder as "Director"</span>
+                                    </label>
+                                    <div class="fieldDescription">The "master" is whoever recorded/filmed the show. Jellyfin has no "recorder" credit, so this uses "Director" as the closest fit.</div>
+                                </div>
+                                <div class="checkboxContainer checkboxContainer-withDescription">
+                                    <label class="emby-checkbox-label">
+                                        <input id="MoviePreserveManualDescriptionEdits" name="MoviePreserveManualDescriptionEdits" type="checkbox" is="emby-checkbox" />
+                                        <span>Preserve manually edited descriptions</span>
+                                    </label>
+                                    <div class="fieldDescription">If you've manually edited a movie's description, don't overwrite it on the next refresh.</div>
+                                </div>
+
+                                <h3 class="encoraSubsectionTitle">Field mapping</h3>
+                                <div class="fieldDescription">Pick which Encora/StageMedia data feeds each Jellyfin field, or "Don't set" to leave it untouched.</div>
+                                <table class="encoraMappingTable">
+                                    <tr><th>Jellyfin field</th><th>Encora/StageMedia source</th></tr>
+                                    <tr>
+                                        <td>Overview</td>
+                                        <td>
+                                            <select id="MovieOverviewSource" name="MovieOverviewSource" is="emby-select" class="emby-select">
+                                                <option value="description_notes">Show description + master/general notes</option>
+                                                <option value="description">Show description only</option>
+                                                <option value="notes">Master/general notes only</option>
+                                                <option value="none">Don't set</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>Tagline</td>
+                                        <td>
+                                            <select id="MovieTaglineSource" name="MovieTaglineSource" is="emby-select" class="emby-select">
+                                                <option value="tour">Tour</option>
+                                                <option value="venue">Venue</option>
+                                                <option value="city">City</option>
+                                                <option value="master">Master (recorder)</option>
+                                                <option value="recording_type">Recording type</option>
+                                                <option value="none">Don't set</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>Studio</td>
+                                        <td>
+                                            <select id="MovieStudioSource" name="MovieStudioSource" is="emby-select" class="emby-select">
+                                                <option value="venue">Venue</option>
+                                                <option value="city">City</option>
+                                                <option value="none">Don't set</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>Production Location</td>
+                                        <td>
+                                            <select id="MovieProductionLocationSource" name="MovieProductionLocationSource" is="emby-select" class="emby-select">
+                                                <option value="city">City</option>
+                                                <option value="venue">Venue</option>
+                                                <option value="none">Don't set</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                </table>
+
+                                <h3 class="encoraSubsectionTitle">Tags &amp; ratings</h3>
+                                <div class="checkboxContainer checkboxContainer-withDescription">
+                                    <label class="emby-checkbox-label">
+                                        <input id="MovieIncludeGenreTags" name="MovieIncludeGenreTags" type="checkbox" is="emby-checkbox" />
+                                        <span>Add genre tags</span>
+                                    </label>
+                                    <div class="fieldDescription">Adds labels like "Bootleg", "Complete", "Boot Camp", "Subtitled", or "Concert" as genres, based on what Encora knows about the recording.</div>
+                                </div>
+                                <div class="checkboxContainer checkboxContainer-withDescription">
+                                    <label class="emby-checkbox-label">
+                                        <input id="MovieIncludeNftTag" name="MovieIncludeNftTag" type="checkbox" is="emby-checkbox" />
+                                        <span>Add NFT tag/rating</span>
+                                    </label>
+                                </div>
+                                </div>
+
+                                <h2 class="sectionTitle encoraCollapsibleHeader">Media</h2>
+                                <div class="encoraCollapsibleContent hide">
+                                <div class="checkboxContainer checkboxContainer-withDescription">
+                                    <label class="emby-checkbox-label">
+                                        <input id="MovieDownloadSubtitles" name="MovieDownloadSubtitles" type="checkbox" is="emby-checkbox" />
+                                        <span>Download subtitles</span>
+                                    </label>
+                                </div>
+                                <div class="checkboxContainer checkboxContainer-withDescription">
+                                    <label class="emby-checkbox-label">
+                                        <input id="MovieFetchPoster" name="MovieFetchPoster" type="checkbox" is="emby-checkbox" />
+                                        <span>Fetch StageMedia poster</span>
+                                    </label>
+                                </div>
+                                <div class="checkboxContainer checkboxContainer-withDescription">
+                                    <label class="emby-checkbox-label">
+                                        <input id="MovieGenerateThumbnail" name="MovieGenerateThumbnail" type="checkbox" is="emby-checkbox" />
+                                        <span>Generate thumb.png for Continue Watching</span>
+                                    </label>
+                                </div>
+                                <div class="inputContainer">
+                                    <label class="inputLabel inputLabelUnfocused" for="MovieThumbnailSeekMinPercent">Thumbnail seek range (% into video)</label>
+                                    <div style="display:flex; gap:1em; align-items:center;">
+                                        <input id="MovieThumbnailSeekMinPercent" name="MovieThumbnailSeekMinPercent" type="number" min="0" max="100" is="emby-input" style="max-width:6em;" />
+                                        <span>to</span>
+                                        <input id="MovieThumbnailSeekMaxPercent" name="MovieThumbnailSeekMaxPercent" type="number" min="0" max="100" is="emby-input" style="max-width:6em;" />
+                                    </div>
+                                    <div class="fieldDescription">The thumbnail is taken at a random point within this range.</div>
+                                </div>
+                                </div>
+                            </div>
+
+                            <!-- ============ Videos - TV Library ============ -->
+                            <div class="EncoraTabContent hide" data-tabindex="3">
+                                <div class="checkboxContainer checkboxContainer-withDescription">
+                                    <label class="emby-checkbox-label">
+                                        <input id="EnableTvMatching" name="EnableTvMatching" type="checkbox" is="emby-checkbox" />
+                                        <span>Match TV Show libraries against Encora</span>
+                                    </label>
+                                    <div class="fieldDescription">Series = the performance, Season = the tour, Episode = a recording date.</div>
+                                </div>
+
+                                <h2 class="sectionTitle encoraCollapsibleHeader encoraExpanded">Which libraries</h2>
+                                <div class="encoraCollapsibleContent">
+                                <div class="fieldDescription">By default this applies to every TV library on your server. If you only want it to check specific libraries, tick them below and leave the rest unticked.</div>
+                                <div id="TvLibraryScopeList" class="encoraLibraryScopeList">
+                                    <div class="fieldDescription">Loading your libraries&hellip;</div>
+                                </div>
+                                </div>
+
+                                <h2 class="sectionTitle encoraCollapsibleHeader">Library Structure</h2>
+                                <div class="encoraCollapsibleContent hide">
+                                <div class="fieldDescription">Set your library's content type to "Shows". Any subfolder under the show becomes a Season regardless of its name - name it after the tour, Encora fills in the rest.</div>
+                                <div class="encoraSegmented" id="TvIdConventionSwitch">
+                                    <button type="button" class="encoraSegmentButton encoraSegmentButton-active" data-convention="inline">ID in filename</button>
+                                    <button type="button" class="encoraSegmentButton" data-convention="folder">ID in folder name</button>
+                                    <button type="button" class="encoraSegmentButton" data-convention="marker">.encora-&lt;id&gt; file</button>
+                                    <button type="button" class="encoraSegmentButton" data-convention="idfile">.encora-id file</button>
+                                </div>
+
+                                <div class="encoraTree" data-convention-group="tv" data-convention="inline">
+                                    <div class="encoraTreeRow">📁 TV Shows/</div>
+                                    <div class="encoraTreeRow">  📁 Hadestown/          &larr; becomes the Series</div>
+                                    <div class="encoraTreeRow">    📁 Broadway/          &larr; becomes the Season</div>
+                                    <div class="encoraTreeRow">      🎬 Hadestown <span class="encoraIdBadge">{e-123456}</span>.mkv   &larr; becomes an Episode</div>
+                                    <div class="encoraTreeRow">      🎬 Hadestown <span class="encoraIdBadge">{e-234567}</span>.mkv   &larr; becomes an Episode</div>
+                                    <div class="encoraTreeRow">    📁 West End/          &larr; a second Season</div>
+                                    <div class="encoraTreeRow">      🎬 Hadestown <span class="encoraIdBadge">{e-345678}</span>.mkv</div>
+                                </div>
+                                <div class="encoraTree hide" data-convention-group="tv" data-convention="folder">
+                                    <div class="encoraTreeRow">📁 TV Shows/</div>
+                                    <div class="encoraTreeRow">  📁 Hadestown/          &larr; becomes the Series</div>
+                                    <div class="encoraTreeRow">    📁 Broadway/          &larr; becomes the Season</div>
+                                    <div class="encoraTreeRow">      📁 2025-05-13 <span class="encoraIdBadge">{e-123456}</span>/   &larr; becomes an Episode</div>
+                                    <div class="encoraTreeRow">        🎬 Hadestown.mkv</div>
+                                    <div class="encoraTreeRow">      📁 2025-05-13 <span class="encoraIdBadge">{e-234567}</span>/   &larr; a second recording, same date</div>
+                                    <div class="encoraTreeRow">        🎬 Hadestown.mkv</div>
+                                </div>
+                                <div class="encoraTreeNote hide" data-convention-group="tv" data-convention="folder">Same reasoning as the marker-file conventions below: the ID is read from a folder, and a Season folder holds multiple dated recordings, so each episode still needs its own subfolder.</div>
+                                <div class="encoraTree hide" data-convention-group="tv" data-convention="marker">
+                                    <div class="encoraTreeRow">📁 TV Shows/</div>
+                                    <div class="encoraTreeRow">  📁 Hadestown/          &larr; becomes the Series</div>
+                                    <div class="encoraTreeRow">    📁 Broadway/          &larr; becomes the Season</div>
+                                    <div class="encoraTreeRow">      📁 2025-05-13/      &larr; one subfolder per Episode</div>
+                                    <div class="encoraTreeRow">        🎬 Hadestown.mkv</div>
+                                    <div class="encoraTreeRow">        📄 <span class="encoraIdBadge">.encora-123456</span></div>
+                                </div>
+                                <div class="encoraTreeNote hide" data-convention-group="tv" data-convention="marker">A marker file identifies every video in its folder, so each episode needs its own subfolder when using this convention - unlike Movies, a Season folder holds multiple dated recordings.</div>
+                                <div class="encoraTree hide" data-convention-group="tv" data-convention="idfile">
+                                    <div class="encoraTreeRow">📁 TV Shows/</div>
+                                    <div class="encoraTreeRow">  📁 Hadestown/          &larr; becomes the Series</div>
+                                    <div class="encoraTreeRow">    📁 Broadway/          &larr; becomes the Season</div>
+                                    <div class="encoraTreeRow">      📁 2025-05-13/      &larr; one subfolder per Episode</div>
+                                    <div class="encoraTreeRow">        🎬 Hadestown.mkv</div>
+                                    <div class="encoraTreeRow">        📄 <span class="encoraIdBadge">.encora-id</span> &rarr; contains "123456"</div>
+                                </div>
+                                <div class="encoraTreeNote hide" data-convention-group="tv" data-convention="idfile">A marker file identifies every video in its folder, so each episode needs its own subfolder when using this convention - unlike Movies, a Season folder holds multiple dated recordings.</div>
+
+                                <div class="encoraTreeArrow">&#8595;</div>
+                                <div class="encoraResultCard">
+                                    <div class="encoraResultRow">
+                                        <span class="encoraResultLabel">Series</span>
+                                        <span class="encoraResultValue">Hadestown</span>
+                                    </div>
+                                    <div class="encoraResultRow">
+                                        <span class="encoraResultLabel">Season</span>
+                                        <span class="encoraResultValue">Broadway</span>
+                                    </div>
+                                    <div class="encoraResultRow">
+                                        <span class="encoraResultLabel">Episode</span>
+                                        <span class="encoraResultValue" id="TvStructureResult"></span>
+                                    </div>
+                                </div>
+                                </div>
+
+                                <h2 class="sectionTitle encoraCollapsibleHeader encoraExpanded">Title</h2>
+                                <div class="encoraCollapsibleContent">
+                                <div class="inputContainer">
+                                    <label class="inputLabel inputLabelUnfocused" for="TvSeriesTitleFormat">Series title format</label>
+                                    <input id="TvSeriesTitleFormat" name="TvSeriesTitleFormat" type="text" is="emby-input" />
+                                    <div id="TvSeriesFormatVars" class="encoraVarPalette"></div>
+                                    <div id="TvSeriesFormatPreview" class="encoraFormatPreview"></div>
+                                </div>
+                                <div class="inputContainer">
+                                    <label class="inputLabel inputLabelUnfocused" for="TvSeasonTitleFormat">Season title format</label>
+                                    <input id="TvSeasonTitleFormat" name="TvSeasonTitleFormat" type="text" is="emby-input" />
+                                    <div id="TvSeasonFormatVars" class="encoraVarPalette"></div>
+                                    <div id="TvSeasonFormatPreview" class="encoraFormatPreview"></div>
+                                </div>
+                                <div class="inputContainer">
+                                    <label class="inputLabel inputLabelUnfocused" for="TvEpisodeTitleFormat">Episode title format</label>
+                                    <input id="TvEpisodeTitleFormat" name="TvEpisodeTitleFormat" type="text" is="emby-input" />
+                                    <div id="TvFormatVars" class="encoraVarPalette"></div>
+                                    <div id="TvFormatPreview" class="encoraFormatPreview"></div>
+                                </div>
+                                <div class="inputContainer">
+                                    <label class="inputLabel inputLabelUnfocused" for="TvDateReplaceChar">Missing Date Replace Character</label>
+                                    <input id="TvDateReplaceChar" name="TvDateReplaceChar" type="text" is="emby-input" />
+                                    <div class="fieldDescription">For dates missing the day / month, which character should be used to replace (e.g. '2024-11-xx')</div>
+                                </div>
+                                </div>
+
+                                <h2 class="sectionTitle encoraCollapsibleHeader">Metadata</h2>
+                                <div class="encoraCollapsibleContent hide">
+
+                                <h3 class="encoraSubsectionTitle">Credits &amp; descriptions</h3>
+                                <div class="checkboxContainer checkboxContainer-withDescription">
+                                    <label class="emby-checkbox-label">
+                                        <input id="TvAddMasterDirector" name="TvAddMasterDirector" type="checkbox" is="emby-checkbox" />
+                                        <span>Credit the recorder as "Director"</span>
+                                    </label>
+                                    <div class="fieldDescription">The "master" is whoever recorded/filmed the show. Jellyfin has no "recorder" credit, so this uses "Director" as the closest fit.</div>
+                                </div>
+                                <div class="checkboxContainer checkboxContainer-withDescription">
+                                    <label class="emby-checkbox-label">
+                                        <input id="TvPreserveManualDescriptionEdits" name="TvPreserveManualDescriptionEdits" type="checkbox" is="emby-checkbox" />
+                                        <span>Preserve manually edited descriptions</span>
+                                    </label>
+                                    <div class="fieldDescription">If you've manually edited a show/episode description, don't overwrite it on the next refresh.</div>
+                                </div>
+
+                                <h3 class="encoraSubsectionTitle">Field mapping</h3>
+                                <div class="fieldDescription">Pick which Encora/StageMedia data feeds each Jellyfin field, or "Don't set" to leave it untouched.</div>
+                                <table class="encoraMappingTable">
+                                    <tr><th>Jellyfin field</th><th>Encora/StageMedia source</th></tr>
+                                    <tr>
+                                        <td>Episode overview</td>
+                                        <td>
+                                            <select id="TvOverviewSource" name="TvOverviewSource" is="emby-select" class="emby-select">
+                                                <option value="description_notes">Show description + master/general notes</option>
+                                                <option value="description">Show description only</option>
+                                                <option value="notes">Master/general notes only</option>
+                                                <option value="none">Don't set</option>
+                                            </select>
+                                            <div class="fieldDescription">The Series overview always uses the full show description - this only controls each Episode's own overview, which defaults to notes only so the same show blurb isn't repeated on every date.</div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>Episode Tagline</td>
+                                        <td>
+                                            <select id="TvTaglineSource" name="TvTaglineSource" is="emby-select" class="emby-select">
+                                                <option value="tour">Tour</option>
+                                                <option value="venue">Venue</option>
+                                                <option value="city">City</option>
+                                                <option value="master">Master (recorder)</option>
+                                                <option value="recording_type">Recording type</option>
+                                                <option value="none">Don't set</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>Studio</td>
+                                        <td>
+                                            <select id="TvStudioSource" name="TvStudioSource" is="emby-select" class="emby-select">
+                                                <option value="venue">Venue</option>
+                                                <option value="city">City</option>
+                                                <option value="none">Don't set</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>Production Location</td>
+                                        <td>
+                                            <select id="TvProductionLocationSource" name="TvProductionLocationSource" is="emby-select" class="emby-select">
+                                                <option value="city">City</option>
+                                                <option value="venue">Venue</option>
+                                                <option value="none">Don't set</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                </table>
+
+                                <h3 class="encoraSubsectionTitle">Tags &amp; ratings</h3>
+                                <div class="checkboxContainer checkboxContainer-withDescription">
+                                    <label class="emby-checkbox-label">
+                                        <input id="TvIncludeGenreTags" name="TvIncludeGenreTags" type="checkbox" is="emby-checkbox" />
+                                        <span>Add genre tags</span>
+                                    </label>
+                                    <div class="fieldDescription">Adds labels like "Bootleg", "Complete", "Boot Camp", "Subtitled", or "Concert" as genres, based on what Encora knows about the recording.</div>
+                                </div>
+                                <div class="checkboxContainer checkboxContainer-withDescription">
+                                    <label class="emby-checkbox-label">
+                                        <input id="TvIncludeNftTag" name="TvIncludeNftTag" type="checkbox" is="emby-checkbox" />
+                                        <span>Add NFT tag/rating</span>
+                                    </label>
+                                </div>
+                                </div>
+
+                                <h2 class="sectionTitle encoraCollapsibleHeader">Media</h2>
+                                <div class="encoraCollapsibleContent hide">
+                                <div class="checkboxContainer checkboxContainer-withDescription">
+                                    <label class="emby-checkbox-label">
+                                        <input id="TvDownloadSubtitles" name="TvDownloadSubtitles" type="checkbox" is="emby-checkbox" />
+                                        <span>Download subtitles</span>
+                                    </label>
+                                </div>
+                                <div class="checkboxContainer checkboxContainer-withDescription">
+                                    <label class="emby-checkbox-label">
+                                        <input id="TvFetchPoster" name="TvFetchPoster" type="checkbox" is="emby-checkbox" />
+                                        <span>Fetch StageMedia poster for the Series</span>
+                                    </label>
+                                </div>
+                                <div class="checkboxContainer checkboxContainer-withDescription">
+                                    <label class="emby-checkbox-label">
+                                        <input id="TvGenerateThumbnail" name="TvGenerateThumbnail" type="checkbox" is="emby-checkbox" />
+                                        <span>Generate thumb.png for Continue Watching</span>
+                                    </label>
+                                </div>
+                                <div class="inputContainer">
+                                    <label class="inputLabel inputLabelUnfocused" for="TvThumbnailSeekMinPercent">Thumbnail seek range (% into video)</label>
+                                    <div style="display:flex; gap:1em; align-items:center;">
+                                        <input id="TvThumbnailSeekMinPercent" name="TvThumbnailSeekMinPercent" type="number" min="0" max="100" is="emby-input" style="max-width:6em;" />
+                                        <span>to</span>
+                                        <input id="TvThumbnailSeekMaxPercent" name="TvThumbnailSeekMaxPercent" type="number" min="0" max="100" is="emby-input" style="max-width:6em;" />
+                                    </div>
+                                    <div class="fieldDescription">The thumbnail is taken at a random point within this range.</div>
+                                </div>
+                                </div>
+                            </div>
+
+                            <!-- ============ Audios - Music Library ============ -->
+                            <div class="EncoraTabContent hide" data-tabindex="4">
+                                <div class="checkboxContainer checkboxContainer-withDescription">
+                                    <label class="emby-checkbox-label">
+                                        <input id="EnableAudioMatching" name="EnableAudioMatching" type="checkbox" is="emby-checkbox" />
+                                        <span>Match Music libraries against Encora</span>
+                                    </label>
+                                    <div class="fieldDescription">Artist = the performance, Album = one recording (tour + date), Track = an Act (or the full recording, if not split into acts).</div>
+                                </div>
+
+                                <h2 class="sectionTitle encoraCollapsibleHeader encoraExpanded">Which libraries</h2>
+                                <div class="encoraCollapsibleContent">
+                                <div class="fieldDescription">By default this applies to every Music library on your server. If you only want it to check specific libraries, tick them below and leave the rest unticked.</div>
+                                <div id="AudioLibraryScopeList" class="encoraLibraryScopeList">
+                                    <div class="fieldDescription">Loading your libraries&hellip;</div>
+                                </div>
+                                </div>
+
+                                <h2 class="sectionTitle encoraCollapsibleHeader">Library Structure</h2>
+                                <div class="encoraCollapsibleContent hide">
+                                <div class="fieldDescription">Set your library's content type to "Music". Name the Album folder anything - Encora renames it for you.</div>
+                                <div class="encoraSegmented" id="AudioIdConventionSwitch">
+                                    <button type="button" class="encoraSegmentButton encoraSegmentButton-active" data-convention="inline">ID in filename</button>
+                                    <button type="button" class="encoraSegmentButton" data-convention="folder">ID in folder name</button>
+                                    <button type="button" class="encoraSegmentButton" data-convention="marker">.encora-&lt;id&gt; file</button>
+                                    <button type="button" class="encoraSegmentButton" data-convention="idfile">.encora-id file</button>
+                                </div>
+
+                                <div class="encoraTree" data-convention-group="audio" data-convention="inline">
+                                    <div class="encoraTreeRow">📁 Music/</div>
+                                    <div class="encoraTreeRow">  📁 Hadestown/          &larr; becomes the Artist</div>
+                                    <div class="encoraTreeRow">    📁 Broadway/          &larr; becomes an Album</div>
+                                    <div class="encoraTreeRow">      🎵 Hadestown Act 1 <span class="encoraIdBadge">{e-123456}</span>.mp3   &larr; becomes a Track</div>
+                                    <div class="encoraTreeRow">      🎵 Hadestown Act 2 <span class="encoraIdBadge">{e-234567}</span>.mp3   &larr; becomes a Track</div>
+                                </div>
+                                <div class="encoraTree hide" data-convention-group="audio" data-convention="folder">
+                                    <div class="encoraTreeRow">📁 Music/</div>
+                                    <div class="encoraTreeRow">  📁 Hadestown/          &larr; becomes the Artist</div>
+                                    <div class="encoraTreeRow">    📁 Broadway/          &larr; becomes an Album</div>
+                                    <div class="encoraTreeRow">      📁 Act 1 <span class="encoraIdBadge">{e-123456}</span>/   &larr; becomes a Track</div>
+                                    <div class="encoraTreeRow">        🎵 Hadestown.mp3</div>
+                                </div>
+                                <div class="encoraTreeNote hide" data-convention-group="audio" data-convention="folder">An Album folder can hold multiple tracks (e.g. Act 1 + Act 2), so each track still needs its own subfolder when the ID lives in a folder name.</div>
+                                <div class="encoraTree hide" data-convention-group="audio" data-convention="marker">
+                                    <div class="encoraTreeRow">📁 Music/</div>
+                                    <div class="encoraTreeRow">  📁 Hadestown/          &larr; becomes the Artist</div>
+                                    <div class="encoraTreeRow">    📁 Broadway/          &larr; becomes an Album</div>
+                                    <div class="encoraTreeRow">      📁 Act 1/           &larr; becomes a Track</div>
+                                    <div class="encoraTreeRow">        🎵 Hadestown.mp3</div>
+                                    <div class="encoraTreeRow">        📄 <span class="encoraIdBadge">.encora-123456</span></div>
+                                </div>
+                                <div class="encoraTreeNote hide" data-convention-group="audio" data-convention="marker">A marker file identifies every audio file in its folder, so each track needs its own subfolder when using this convention.</div>
+                                <div class="encoraTree hide" data-convention-group="audio" data-convention="idfile">
+                                    <div class="encoraTreeRow">📁 Music/</div>
+                                    <div class="encoraTreeRow">  📁 Hadestown/          &larr; becomes the Artist</div>
+                                    <div class="encoraTreeRow">    📁 Broadway/          &larr; becomes an Album</div>
+                                    <div class="encoraTreeRow">      📁 Act 1/           &larr; becomes a Track</div>
+                                    <div class="encoraTreeRow">        🎵 Hadestown.mp3</div>
+                                    <div class="encoraTreeRow">        📄 <span class="encoraIdBadge">.encora-id</span> &rarr; contains "123456"</div>
+                                </div>
+                                <div class="encoraTreeNote hide" data-convention-group="audio" data-convention="idfile">A marker file identifies every audio file in its folder, so each track needs its own subfolder when using this convention.</div>
+
+                                <div class="encoraTreeArrow">&#8595;</div>
+                                <div class="encoraResultCard">
+                                    <div class="encoraResultRow">
+                                        <span class="encoraResultLabel">Artist</span>
+                                        <span class="encoraResultValue">Hadestown</span>
+                                    </div>
+                                    <div class="encoraResultRow">
+                                        <span class="encoraResultLabel">Album</span>
+                                        <span class="encoraResultValue" id="AudioAlbumStructureResult"></span>
+                                    </div>
+                                    <div class="encoraResultRow">
+                                        <span class="encoraResultLabel">Track</span>
+                                        <span class="encoraResultValue">Act 1 / Act 2 (or the Album title, if not split)</span>
+                                    </div>
+                                </div>
+                                </div>
+
+                                <h2 class="sectionTitle encoraCollapsibleHeader encoraExpanded">Title</h2>
+                                <div class="encoraCollapsibleContent">
+                                <div class="inputContainer">
+                                    <label class="inputLabel inputLabelUnfocused" for="AudioArtistTitleFormat">Artist title format</label>
+                                    <input id="AudioArtistTitleFormat" name="AudioArtistTitleFormat" type="text" is="emby-input" />
+                                    <div id="AudioArtistFormatVars" class="encoraVarPalette"></div>
+                                    <div id="AudioArtistFormatPreview" class="encoraFormatPreview"></div>
+                                </div>
+                                <div class="inputContainer">
+                                    <label class="inputLabel inputLabelUnfocused" for="AudioAlbumTitleFormat">Album title format</label>
+                                    <input id="AudioAlbumTitleFormat" name="AudioAlbumTitleFormat" type="text" is="emby-input" />
+                                    <div id="AudioFormatVars" class="encoraVarPalette"></div>
+                                    <div id="AudioFormatPreview" class="encoraFormatPreview"></div>
+                                </div>
+                                <div class="inputContainer">
+                                    <label class="inputLabel inputLabelUnfocused" for="AudioTrackTitleFormat">Track title format</label>
+                                    <input id="AudioTrackTitleFormat" name="AudioTrackTitleFormat" type="text" is="emby-input" />
+                                    <div id="AudioTrackFormatVars" class="encoraVarPalette"></div>
+                                    <div id="AudioTrackFormatPreview" class="encoraFormatPreview"></div>
+                                    <div class="fieldDescription">Only used when an Act is detected in the filename (e.g. "Act 1"); otherwise the track is named after the Album.</div>
+                                </div>
+                                <div class="checkboxContainer checkboxContainer-withDescription">
+                                    <label class="emby-checkbox-label">
+                                        <input id="AudioRespectEmbeddedTags" name="AudioRespectEmbeddedTags" type="checkbox" is="emby-checkbox" />
+                                        <span>Respect existing embedded title/track number/artwork</span>
+                                    </label>
+                                    <div class="fieldDescription">If the file already has a title or track number tagged (e.g. ID3), keep it instead of overwriting it with the format above. Also skips downloading a StageMedia album poster if the file already has embedded cover art.</div>
+                                </div>
+                                <div class="inputContainer">
+                                    <label class="inputLabel inputLabelUnfocused" for="AudioDateReplaceChar">Missing Date Replace Character</label>
+                                    <input id="AudioDateReplaceChar" name="AudioDateReplaceChar" type="text" is="emby-input" />
+                                    <div class="fieldDescription">For dates missing the day / month, which character should be used to replace (e.g. '2024-11-xx')</div>
+                                </div>
+                                </div>
+
+                                <h2 class="sectionTitle encoraCollapsibleHeader">Metadata</h2>
+                                <div class="encoraCollapsibleContent hide">
+
+                                <h3 class="encoraSubsectionTitle">Descriptions</h3>
+                                <div class="checkboxContainer checkboxContainer-withDescription">
+                                    <label class="emby-checkbox-label">
+                                        <input id="AudioPreserveManualDescriptionEdits" name="AudioPreserveManualDescriptionEdits" type="checkbox" is="emby-checkbox" />
+                                        <span>Preserve manually edited descriptions</span>
+                                    </label>
+                                    <div class="fieldDescription">If you've manually edited an artist/album description, don't overwrite it on the next refresh.</div>
+                                </div>
+
+                                <h3 class="encoraSubsectionTitle">Field mapping</h3>
+                                <div class="fieldDescription">Pick which Encora/StageMedia data feeds each Jellyfin field, or "Don't set" to leave it untouched.</div>
+                                <table class="encoraMappingTable">
+                                    <tr><th>Jellyfin field</th><th>Encora/StageMedia source</th></tr>
+                                    <tr>
+                                        <td>Album overview</td>
+                                        <td>
+                                            <select id="AudioOverviewSource" name="AudioOverviewSource" is="emby-select" class="emby-select">
+                                                <option value="description_notes">Show description + master/general notes</option>
+                                                <option value="description">Show description only</option>
+                                                <option value="notes">Master/general notes only</option>
+                                                <option value="none">Don't set</option>
+                                            </select>
+                                            <div class="fieldDescription">The Artist overview always uses the full show description - this only controls each Album's own overview, which defaults to notes only so the same show blurb isn't repeated on every date.</div>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>Tagline</td>
+                                        <td>
+                                            <select id="AudioTaglineSource" name="AudioTaglineSource" is="emby-select" class="emby-select">
+                                                <option value="tour">Tour</option>
+                                                <option value="venue">Venue</option>
+                                                <option value="city">City</option>
+                                                <option value="master">Master (recorder)</option>
+                                                <option value="recording_type">Recording type</option>
+                                                <option value="none">Don't set</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>Studio</td>
+                                        <td>
+                                            <select id="AudioStudioSource" name="AudioStudioSource" is="emby-select" class="emby-select">
+                                                <option value="venue">Venue</option>
+                                                <option value="city">City</option>
+                                                <option value="none">Don't set</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>Production Location</td>
+                                        <td>
+                                            <select id="AudioProductionLocationSource" name="AudioProductionLocationSource" is="emby-select" class="emby-select">
+                                                <option value="city">City</option>
+                                                <option value="venue">Venue</option>
+                                                <option value="none">Don't set</option>
+                                            </select>
+                                        </td>
+                                    </tr>
+                                </table>
+
+                                <h3 class="encoraSubsectionTitle">Tags &amp; ratings</h3>
+                                <div class="checkboxContainer checkboxContainer-withDescription">
+                                    <label class="emby-checkbox-label">
+                                        <input id="AudioIncludeGenreTags" name="AudioIncludeGenreTags" type="checkbox" is="emby-checkbox" />
+                                        <span>Add genre tags</span>
+                                    </label>
+                                    <div class="fieldDescription">Adds labels like "Bootleg", "Complete", "Boot Camp", "Subtitled", or "Concert" as genres, based on what Encora knows about the recording.</div>
+                                </div>
+                                <div class="checkboxContainer checkboxContainer-withDescription">
+                                    <label class="emby-checkbox-label">
+                                        <input id="AudioIncludeNftTag" name="AudioIncludeNftTag" type="checkbox" is="emby-checkbox" />
+                                        <span>Add NFT tag/rating</span>
+                                    </label>
+                                </div>
+                                </div>
+
+                                <h2 class="sectionTitle encoraCollapsibleHeader">Media</h2>
+                                <div class="encoraCollapsibleContent hide">
+                                <div class="checkboxContainer checkboxContainer-withDescription">
+                                    <label class="emby-checkbox-label">
+                                        <input id="AudioFetchPoster" name="AudioFetchPoster" type="checkbox" is="emby-checkbox" />
+                                        <span>Fetch StageMedia cover art</span>
+                                    </label>
+                                </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <button is="emby-button" type="button" class="raised button-submit block" id="EncoraSaveButton"><span>Save</span></button>
+                            </div>
+                        </form>
                     </div>
-                    <div class="checkboxContainer checkboxContainer-withDescription">
-                        <label class="emby-checkbox-label">
-                            <input id="AddMasterDirector" name="AddMasterDirector" type="checkbox" is="emby-checkbox" />
-                            <span>Add master as director</span>
-                        </label>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="TitleFormat">Title format</label>
-                        <input id="TitleFormat" name="TitleFormat" type="text" is="emby-input" />
-                        <div class="fieldDescription">Variables: {show}, {date}, {date_usa}, {date_iso}, {date_numeric}, {tour}, {master}</div>
-                    </div>
-                    <div class="inputContainer">
-                        <label class="inputLabel inputLabelUnfocused" for="DateReplaceChar">Missing Date Replace Character</label>
-                        <input id="DateReplaceChar" name="DateReplaceChar" type="text" is="emby-input" />
-                        <div class="fieldDescription">For dates missing the day / month, which character should be used to replace (e.g. '2024-11-xx')</div>
-                    </div>
-                    <div>
-                        <button is="emby-button" type="button" class="raised button-submit block" id="EncoraSaveButton"><span>Save</span></button>
-                    </div>
-                </form>
+                </div>
             </div>
         </div>
         <script type="text/javascript">
@@ -46,14 +1079,254 @@
                 pluginUniqueId: 'e0e9f5b9-5687-4a39-8e67-86c3399f9176'
             };
 
+            var EncoraFields = {
+                text: ['EncoraAPIKey', 'StageMediaAPIKey', 'MovieTitleFormat', 'MovieDateReplaceChar', 'TvSeriesTitleFormat', 'TvSeasonTitleFormat', 'TvEpisodeTitleFormat', 'TvDateReplaceChar', 'AudioArtistTitleFormat', 'AudioAlbumTitleFormat', 'AudioTrackTitleFormat', 'AudioDateReplaceChar'],
+                number: ['AutoRefreshIntervalHours', 'MovieThumbnailSeekMinPercent', 'MovieThumbnailSeekMaxPercent', 'TvThumbnailSeekMinPercent', 'TvThumbnailSeekMaxPercent'],
+                select: ['MovieOverviewSource', 'MovieTaglineSource', 'MovieStudioSource', 'MovieProductionLocationSource', 'TvOverviewSource', 'TvTaglineSource', 'TvStudioSource', 'TvProductionLocationSource', 'AudioOverviewSource', 'AudioTaglineSource', 'AudioStudioSource', 'AudioProductionLocationSource'],
+                checkbox: ['EnableMovieMatching', 'MovieAddMasterDirector', 'MoviePreserveManualDescriptionEdits', 'MovieIncludeGenreTags', 'MovieIncludeNftTag', 'MovieDownloadSubtitles', 'MovieFetchPoster', 'MovieGenerateThumbnail', 'EnableTvMatching', 'TvAddMasterDirector', 'TvPreserveManualDescriptionEdits', 'TvIncludeGenreTags', 'TvIncludeNftTag', 'TvDownloadSubtitles', 'TvFetchPoster', 'TvGenerateThumbnail', 'EnableAudioMatching', 'AudioPreserveManualDescriptionEdits', 'AudioRespectEmbeddedTags', 'AudioIncludeGenreTags', 'AudioIncludeNftTag', 'AudioFetchPoster']
+            };
+
+            function encoraBuildVarPalette(containerId, inputId, previewId, variables) {
+                var container = document.getElementById(containerId);
+                var input = document.getElementById(inputId);
+                var preview = document.getElementById(previewId);
+                var keys = Object.keys(variables);
+
+                keys.forEach(function (key) {
+                    var btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'encoraVarChip';
+                    btn.textContent = '{' + key + '}';
+                    btn.title = variables[key].description;
+                    btn.addEventListener('click', function () {
+                        var start = input.selectionStart != null ? input.selectionStart : input.value.length;
+                        var end = input.selectionEnd != null ? input.selectionEnd : input.value.length;
+                        var insert = '{' + key + '}';
+                        input.value = input.value.slice(0, start) + insert + input.value.slice(end);
+                        var newPos = start + insert.length;
+                        input.focus();
+                        input.setSelectionRange(newPos, newPos);
+                        updatePreview();
+                    });
+                    container.appendChild(btn);
+                });
+
+                function updatePreview() {
+                    var text = input.value || '';
+                    keys.forEach(function (key) {
+                        text = text.split('{' + key + '}').join(variables[key].sample);
+                    });
+                    preview.textContent = text || '(empty)';
+                }
+
+                input.addEventListener('input', updatePreview);
+                updatePreview();
+            }
+
+            function encoraMirrorPreview(inputId, previewId, resultId) {
+                var input = document.getElementById(inputId);
+                var preview = document.getElementById(previewId);
+                var result = document.getElementById(resultId);
+
+                function mirror() {
+                    result.textContent = preview.textContent;
+                }
+
+                input.addEventListener('input', mirror);
+                mirror();
+            }
+
+            function encoraWireCollapsibles() {
+                var page = document.getElementById('EncoraConfigPage');
+                var headers = page.querySelectorAll('.encoraCollapsibleHeader');
+
+                headers.forEach(function (header) {
+                    var content = header.nextElementSibling;
+                    if (!content || !content.classList.contains('encoraCollapsibleContent')) {
+                        return;
+                    }
+
+                    header.addEventListener('click', function () {
+                        var expanded = header.classList.toggle('encoraExpanded');
+                        content.classList.toggle('hide', !expanded);
+                    });
+                });
+            }
+
+            function encoraWireIdConventionSwitch(switchId, group) {
+                var switchEl = document.getElementById(switchId);
+                var buttons = switchEl.querySelectorAll('.encoraSegmentButton');
+                var page = document.getElementById('EncoraConfigPage');
+                var trees = page.querySelectorAll('[data-convention-group="' + group + '"]');
+
+                buttons.forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        var convention = btn.getAttribute('data-convention');
+
+                        buttons.forEach(function (b) {
+                            b.classList.toggle('encoraSegmentButton-active', b === btn);
+                        });
+
+                        trees.forEach(function (tree) {
+                            tree.classList.toggle('hide', tree.getAttribute('data-convention') !== convention);
+                        });
+                    });
+                });
+            }
+
+            function encoraRenderLibraryScope(containerId, folders, collectionTypeFilter, selectedIds) {
+                var container = document.getElementById(containerId);
+                container.innerHTML = '';
+
+                var filtered = folders.filter(function (f) {
+                    return !collectionTypeFilter || String(f.CollectionType || '').toLowerCase() === collectionTypeFilter;
+                });
+
+                if (filtered.length === 0) {
+                    var none = document.createElement('div');
+                    none.className = 'fieldDescription';
+                    none.textContent = 'No matching libraries found on this server yet - this will apply to every one you add later.';
+                    container.appendChild(none);
+                    return;
+                }
+
+                filtered.forEach(function (folder) {
+                    var row = document.createElement('div');
+                    row.className = 'encoraLibraryScopeRow';
+
+                    var input = document.createElement('input');
+                    input.type = 'checkbox';
+                    input.className = 'encoraLibraryScopeCheckbox';
+                    input.id = containerId + '_' + folder.ItemId;
+                    input.setAttribute('data-library-id', folder.ItemId);
+                    input.checked = selectedIds.indexOf(folder.ItemId) !== -1;
+
+                    var label = document.createElement('label');
+                    label.setAttribute('for', input.id);
+                    label.textContent = folder.Name;
+
+                    row.appendChild(input);
+                    row.appendChild(label);
+                    container.appendChild(row);
+                });
+            }
+
+            function encoraGetLibraryScopeIds(containerId) {
+                var container = document.getElementById(containerId);
+                var checked = container.querySelectorAll('.encoraLibraryScopeCheckbox:checked');
+                return Array.prototype.map.call(checked, function (el) {
+                    return el.getAttribute('data-library-id');
+                });
+            }
+
             window.addEventListener("pageshow", function () {
-                ApiClient.getPluginConfiguration(EncoraConfig.pluginUniqueId).then(function (config) {
+                var page = document.getElementById("EncoraConfigPage");
+                var navButtons = page.querySelectorAll(".encoraNavButton");
+                var panels = page.querySelectorAll(".EncoraTabContent");
+
+                navButtons.forEach(function (btn) {
+                    btn.addEventListener("click", function () {
+                        var index = btn.getAttribute("data-tabindex");
+
+                        navButtons.forEach(function (b) {
+                            b.classList.toggle("encoraNavButton-active", b === btn);
+                        });
+
+                        panels.forEach(function (panel) {
+                            panel.classList.toggle("hide", panel.getAttribute("data-tabindex") !== index);
+                        });
+                    });
+                });
+
+                var venueCityVars = {
+                    venue: { sample: 'Gershwin Theatre', description: 'Venue name' },
+                    city: { sample: 'New York', description: 'City' }
+                };
+
+                encoraBuildVarPalette('MovieFormatVars', 'MovieTitleFormat', 'MovieFormatPreview', Object.assign({
+                    show: { sample: 'Hadestown', description: 'Show name' },
+                    date: { sample: 'December 31, 2024', description: 'Long-form date' },
+                    date_iso: { sample: '2024-12-31', description: 'ISO date' },
+                    date_usa: { sample: '12-31-2024', description: 'US-order date' },
+                    date_numeric: { sample: '31-12-2024', description: 'Day-first numeric date' },
+                    tour: { sample: 'Broadway', description: 'Tour name' },
+                    master: { sample: 'SomeUser', description: 'Recording master (recorder) name' }
+                }, venueCityVars));
+
+                encoraBuildVarPalette('TvSeriesFormatVars', 'TvSeriesTitleFormat', 'TvSeriesFormatPreview', Object.assign({
+                    show: { sample: 'Hadestown', description: 'Show name' }
+                }, venueCityVars));
+
+                encoraBuildVarPalette('TvSeasonFormatVars', 'TvSeasonTitleFormat', 'TvSeasonFormatPreview', Object.assign({
+                    tour: { sample: 'Broadway', description: 'Tour name' }
+                }, venueCityVars));
+
+                encoraBuildVarPalette('TvFormatVars', 'TvEpisodeTitleFormat', 'TvFormatPreview', Object.assign({
+                    date: { sample: 'December 31, 2024', description: 'Long-form date' },
+                    date_iso: { sample: '2024-12-31', description: 'ISO date' },
+                    date_usa: { sample: '12-31-2024', description: 'US-order date' },
+                    date_numeric: { sample: '31-12-2024', description: 'Day-first numeric date' },
+                    master: { sample: 'SomeUser', description: 'Recording master (recorder) name' }
+                }, venueCityVars));
+
+                encoraBuildVarPalette('AudioArtistFormatVars', 'AudioArtistTitleFormat', 'AudioArtistFormatPreview', Object.assign({
+                    show: { sample: 'Hadestown', description: 'Show name' }
+                }, venueCityVars));
+
+                encoraBuildVarPalette('AudioFormatVars', 'AudioAlbumTitleFormat', 'AudioFormatPreview', Object.assign({
+                    date: { sample: 'December 31, 2024', description: 'Long-form date' },
+                    date_iso: { sample: '2024-12-31', description: 'ISO date' },
+                    date_usa: { sample: '12-31-2024', description: 'US-order date' },
+                    date_numeric: { sample: '31-12-2024', description: 'Day-first numeric date' },
+                    tour: { sample: 'Broadway', description: 'Tour name' },
+                    master: { sample: 'SomeUser', description: 'Recording master (recorder) name' }
+                }, venueCityVars));
+
+                encoraBuildVarPalette('AudioTrackFormatVars', 'AudioTrackTitleFormat', 'AudioTrackFormatPreview', {
+                    act: { sample: '1', description: 'Act number (only present when detected in the filename)' }
+                });
+
+                encoraMirrorPreview('MovieTitleFormat', 'MovieFormatPreview', 'MovieStructureResult');
+                encoraMirrorPreview('TvEpisodeTitleFormat', 'TvFormatPreview', 'TvStructureResult');
+                encoraMirrorPreview('AudioAlbumTitleFormat', 'AudioFormatPreview', 'AudioAlbumStructureResult');
+                encoraWireIdConventionSwitch('MovieIdConventionSwitch', 'movie');
+                encoraWireIdConventionSwitch('TvIdConventionSwitch', 'tv');
+                encoraWireIdConventionSwitch('AudioIdConventionSwitch', 'audio');
+                encoraWireCollapsibles();
+
+                ApiClient.getJSON(ApiClient.getUrl("Plugins")).then(function (plugins) {
+                    var mine = plugins.find(function (p) { return p.Id === EncoraConfig.pluginUniqueId; });
+                    document.getElementById("EncoraVersionText").textContent = mine && mine.Version ? mine.Version : "Unknown";
+                }).catch(function () {
+                    document.getElementById("EncoraVersionText").textContent = "Unknown";
+                });
+
+                Promise.all([
+                    ApiClient.getPluginConfiguration(EncoraConfig.pluginUniqueId),
+                    ApiClient.getJSON(ApiClient.getUrl("Library/VirtualFolders")).catch(function () { return []; })
+                ]).then(function (results) {
+                    var config = results[0];
+                    var folders = results[1] || [];
                     console.log("🛠️ Loaded config", config);
-                    document.getElementById("EncoraAPIKey").value = config.EncoraAPIKey || '';
-                    document.getElementById("StageMediaAPIKey").value = config.StageMediaAPIKey || '';
-                    document.getElementById("AddMasterDirector").checked = config.AddMasterDirector || false;
-                    document.getElementById("TitleFormat").value = config.TitleFormat || '';
-                    document.getElementById("DateReplaceChar").value = config.DateReplaceChar || '';
+                    EncoraFields.text.forEach(function (id) {
+                        document.getElementById(id).value = config[id] || '';
+                    });
+                    EncoraFields.number.forEach(function (id) {
+                        document.getElementById(id).value = (config[id] != null ? config[id] : '');
+                    });
+                    EncoraFields.select.forEach(function (id) {
+                        document.getElementById(id).value = config[id] || '';
+                    });
+                    EncoraFields.checkbox.forEach(function (id) {
+                        document.getElementById(id).checked = !!config[id];
+                    });
+                    ['MovieTitleFormat', 'TvSeriesTitleFormat', 'TvSeasonTitleFormat', 'TvEpisodeTitleFormat', 'AudioArtistTitleFormat', 'AudioAlbumTitleFormat', 'AudioTrackTitleFormat'].forEach(function (id) {
+                        document.getElementById(id).dispatchEvent(new Event('input'));
+                    });
+
+                    encoraRenderLibraryScope('MovieLibraryScopeList', folders, 'movies', config.MovieLibraryIds || []);
+                    encoraRenderLibraryScope('TvLibraryScopeList', folders, 'tvshows', config.TvLibraryIds || []);
+                    encoraRenderLibraryScope('AudioLibraryScopeList', folders, 'music', config.AudioLibraryIds || []);
                 });
 
                 const saveBtn = document.getElementById("EncoraSaveButton");
@@ -61,11 +1334,22 @@
                     Dashboard.showLoadingMsg();
 
                     ApiClient.getPluginConfiguration(EncoraConfig.pluginUniqueId).then(function (config) {
-                        config.EncoraAPIKey = document.getElementById("EncoraAPIKey").value;
-                        config.StageMediaAPIKey = document.getElementById("StageMediaAPIKey").value;
-                        config.AddMasterDirector = document.getElementById("AddMasterDirector").checked;
-                        config.TitleFormat = document.getElementById("TitleFormat").value;
-                        config.DateReplaceChar = document.getElementById("DateReplaceChar").value;
+                        EncoraFields.text.forEach(function (id) {
+                            config[id] = document.getElementById(id).value;
+                        });
+                        EncoraFields.number.forEach(function (id) {
+                            config[id] = parseInt(document.getElementById(id).value, 10) || 0;
+                        });
+                        EncoraFields.select.forEach(function (id) {
+                            config[id] = document.getElementById(id).value;
+                        });
+                        EncoraFields.checkbox.forEach(function (id) {
+                            config[id] = document.getElementById(id).checked;
+                        });
+
+                        config.MovieLibraryIds = encoraGetLibraryScopeIds('MovieLibraryScopeList');
+                        config.TvLibraryIds = encoraGetLibraryScopeIds('TvLibraryScopeList');
+                        config.AudioLibraryIds = encoraGetLibraryScopeIds('AudioLibraryScopeList');
 
                         ApiClient.updatePluginConfiguration(EncoraConfig.pluginUniqueId, config).then(function (result) {
                             Dashboard.processPluginConfigurationUpdateResult(result);

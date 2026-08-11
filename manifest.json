@@ -1,0 +1,29 @@
+[
+  {
+    "guid": "e0e9f5b9-5687-4a39-8e67-86c3399f9176",
+    "name": "Encora",
+    "description": "Fetches theatrical performance metadata from https://encora.it\nYou must provide your own API key\n",
+    "overview": "Fetches metadata from Encora.it",
+    "owner": "pekempy",
+    "imageUrl": "https://raw.githubusercontent.com/pekempy/Jellyfin.Plugin.Encora/master/JellyfinPluginBanner.png",
+    "category": "General",
+    "versions": [
+      {
+        "version": "1.0.0.1",
+        "changelog": "## What's Changed\r\n* Updated readme by @KristAude in https://github.com/pekempy/Jellyfin.Plugin.Encora/pull/1\r\n* Update README.md by @KristAude in https://github.com/pekempy/Jellyfin.Plugin.Encora/pull/2\r\n* Refactored to remove NFOMetadataProvider separately and incorporate the logic into the Encora Provider.\r\n* Change thumb generation to be a random time during the video (15-60% of duration) to handle shorter highlight videos\r\n\r\n**Full Changelog**: https://github.com/pekempy/Jellyfin.Plugin.Encora/compare/1.0.0.0...1.0.0.1",
+        "targetAbi": "10.9.0.0",
+        "sourceUrl": "https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/1.0.0.1/Jellyfin.Plugin.Encora.zip",
+        "checksum": "4d08af27195768305c9ce2afdb11a635",
+        "timestamp": "2025-07-01T12:48:05Z"
+      },
+      {
+        "version": "1.0.0.0",
+        "changelog": "### Initial Release\r\nThe first release of the Encora agent for Jellyfin!\r\n\r\n#### Features:\r\n- Fetch from Encora based on the ID\r\n- Fetch headshots \r\n- Download subtitles (may need a second 'refresh' for new files after downloading)\r\n- Customise the names of your library\r\n- Fetch posters from stagemedia",
+        "targetAbi": "10.9.0.0",
+        "sourceUrl": "https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/1.0.0.0/Jellyfin.Plugin.Encora.zip",
+        "checksum": "0751140e2615fc2782114fc1168de641",
+        "timestamp": "2025-06-27T12:15:33Z"
+      }
+    ]
+  }
+]

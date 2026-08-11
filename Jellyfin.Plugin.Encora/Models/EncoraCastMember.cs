@@ -5,7 +5,6 @@ using System.Linq;
 using System.Text.Json.Serialization;
 using Jellyfin.Data.Enums;
 using MediaBrowser.Controller.Entities;
-using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.LiveTv;
 
@@ -42,7 +41,8 @@ namespace Jellyfin.Plugin.Encora.Models
         /// <param name="headshots">Optional collection of headshots associated with the cast members.</param>
         /// <param name="master">The master name to be added as a director, if applicable.</param>
         /// <param name="shouldAddMasterDirector">Indicates whether to add the master as a director.</param>
-        public static void MapCastToResult(MetadataResult<Movie> result, IEnumerable<EncoraCastMember> cast, Collection<StageMediaPerformer> headshots, string? master, bool shouldAddMasterDirector)
+        /// <typeparam name="T">The item type of the metadata result (e.g. Movie, Episode).</typeparam>
+        public static void MapCastToResult<T>(MetadataResult<T> result, IEnumerable<EncoraCastMember> cast, Collection<StageMediaPerformer> headshots, string? master, bool shouldAddMasterDirector)
         {
             var config = Plugin.Instance?.Configuration;
             var addedPeople = new List<PersonInfo>();

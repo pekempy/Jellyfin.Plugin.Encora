@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Jellyfin.Plugin.Encora.Models;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.Movies;
+using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
@@ -16,21 +17,23 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.Encora.Providers
 {
     /// <summary>
-    /// Provides remote image support for movies using the StageMedia API.
+    /// Provides remote image support for Movies, Series and Seasons using the StageMedia API. StageMedia's
+    /// image pool is keyed by show, not by a specific recording/tour/date, so Series and Season share the
+    /// exact same searchable poster pool as their underlying Movies do.
     /// </summary>
-    public class StageMediaMovieImageProvider : IRemoteImageProvider
+    public class StageMediaImageProvider : IRemoteImageProvider
     {
         private readonly IHttpClientFactory _httpClientFactory;
-        private readonly ILogger<StageMediaMovieImageProvider> _logger;
+        private readonly ILogger<StageMediaImageProvider> _logger;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="StageMediaMovieImageProvider"/> class.
+        /// Initializes a new instance of the <see cref="StageMediaImageProvider"/> class.
         /// </summary>
         /// <param name="httpClientFactory">The HTTP client factory.</param>
         /// <param name="logger">The logger instance.</param>
-        public StageMediaMovieImageProvider(
+        public StageMediaImageProvider(
             IHttpClientFactory httpClientFactory,
-            ILogger<StageMediaMovieImageProvider> logger)
+            ILogger<StageMediaImageProvider> logger)
         {
             _httpClientFactory = httpClientFactory;
             _logger = logger;
@@ -40,7 +43,7 @@ namespace Jellyfin.Plugin.Encora.Providers
         public string Name => "StageMedia";
 
         /// <inheritdoc />
-        public bool Supports(BaseItem item) => item is Movie;
+        public bool Supports(BaseItem item) => item is Movie || item is Series || item is Season;
 
         /// <inheritdoc />
         public IEnumerable<ImageType> GetSupportedImages(BaseItem item)
@@ -51,14 +54,9 @@ namespace Jellyfin.Plugin.Encora.Providers
         /// <inheritdoc />
         public async Task<IEnumerable<RemoteImageInfo>> GetImages(BaseItem item, CancellationToken cancellationToken)
         {
-            if (item is not Movie movie)
+            if (!item.ProviderIds.TryGetValue("StageMediaShowId", out var showId) || string.IsNullOrWhiteSpace(showId))
             {
-                return Enumerable.Empty<RemoteImageInfo>();
-            }
-
-            if (!movie.ProviderIds.TryGetValue("StageMediaShowId", out var showId) || string.IsNullOrWhiteSpace(showId))
-            {
-                _logger.LogError("[Encora] [StageMedia] Movie {MovieName} does not have a valid StageMedia Show ID.", movie.Name);
+                _logger.LogError("[Encora] [StageMedia] {ItemName} does not have a valid StageMedia Show ID.", item.Name);
                 return Enumerable.Empty<RemoteImageInfo>();
             }
 
