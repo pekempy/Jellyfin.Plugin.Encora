@@ -52,11 +52,6 @@ namespace Jellyfin.Plugin.Encora.Models
         public bool IncludeNftTag { get; set; } = true;
 
         /// <summary>
-        /// Gets or sets a value indicating whether subtitles should be downloaded.
-        /// </summary>
-        public bool DownloadSubtitles { get; set; } = true;
-
-        /// <summary>
         /// Gets or sets a value indicating whether a StageMedia poster should be fetched/written.
         /// </summary>
         public bool FetchPoster { get; set; } = true;

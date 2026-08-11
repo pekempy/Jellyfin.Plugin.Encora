@@ -606,12 +606,6 @@
                                 <div class="encoraCollapsibleContent hide">
                                 <div class="checkboxContainer checkboxContainer-withDescription">
                                     <label class="emby-checkbox-label">
-                                        <input id="MovieDownloadSubtitles" name="MovieDownloadSubtitles" type="checkbox" is="emby-checkbox" />
-                                        <span>Download subtitles</span>
-                                    </label>
-                                </div>
-                                <div class="checkboxContainer checkboxContainer-withDescription">
-                                    <label class="emby-checkbox-label">
                                         <input id="MovieFetchPoster" name="MovieFetchPoster" type="checkbox" is="emby-checkbox" />
                                         <span>Fetch StageMedia poster</span>
                                     </label>
@@ -832,12 +826,6 @@
 
                                 <h2 class="sectionTitle encoraCollapsibleHeader">Media</h2>
                                 <div class="encoraCollapsibleContent hide">
-                                <div class="checkboxContainer checkboxContainer-withDescription">
-                                    <label class="emby-checkbox-label">
-                                        <input id="TvDownloadSubtitles" name="TvDownloadSubtitles" type="checkbox" is="emby-checkbox" />
-                                        <span>Download subtitles</span>
-                                    </label>
-                                </div>
                                 <div class="checkboxContainer checkboxContainer-withDescription">
                                     <label class="emby-checkbox-label">
                                         <input id="TvFetchPoster" name="TvFetchPoster" type="checkbox" is="emby-checkbox" />
@@ -1083,7 +1071,7 @@
                 text: ['EncoraAPIKey', 'StageMediaAPIKey', 'MovieTitleFormat', 'MovieDateReplaceChar', 'TvSeriesTitleFormat', 'TvSeasonTitleFormat', 'TvEpisodeTitleFormat', 'TvDateReplaceChar', 'AudioArtistTitleFormat', 'AudioAlbumTitleFormat', 'AudioTrackTitleFormat', 'AudioDateReplaceChar'],
                 number: ['AutoRefreshIntervalHours', 'MovieThumbnailSeekMinPercent', 'MovieThumbnailSeekMaxPercent', 'TvThumbnailSeekMinPercent', 'TvThumbnailSeekMaxPercent'],
                 select: ['MovieOverviewSource', 'MovieTaglineSource', 'MovieStudioSource', 'MovieProductionLocationSource', 'TvOverviewSource', 'TvTaglineSource', 'TvStudioSource', 'TvProductionLocationSource', 'AudioOverviewSource', 'AudioTaglineSource', 'AudioStudioSource', 'AudioProductionLocationSource'],
-                checkbox: ['EnableMovieMatching', 'MovieAddMasterDirector', 'MoviePreserveManualDescriptionEdits', 'MovieIncludeGenreTags', 'MovieIncludeNftTag', 'MovieDownloadSubtitles', 'MovieFetchPoster', 'MovieGenerateThumbnail', 'EnableTvMatching', 'TvAddMasterDirector', 'TvPreserveManualDescriptionEdits', 'TvIncludeGenreTags', 'TvIncludeNftTag', 'TvDownloadSubtitles', 'TvFetchPoster', 'TvGenerateThumbnail', 'EnableAudioMatching', 'AudioPreserveManualDescriptionEdits', 'AudioRespectEmbeddedTags', 'AudioIncludeGenreTags', 'AudioIncludeNftTag', 'AudioFetchPoster']
+                checkbox: ['EnableMovieMatching', 'MovieAddMasterDirector', 'MoviePreserveManualDescriptionEdits', 'MovieIncludeGenreTags', 'MovieIncludeNftTag', 'MovieFetchPoster', 'MovieGenerateThumbnail', 'EnableTvMatching', 'TvAddMasterDirector', 'TvPreserveManualDescriptionEdits', 'TvIncludeGenreTags', 'TvIncludeNftTag', 'TvFetchPoster', 'TvGenerateThumbnail', 'EnableAudioMatching', 'AudioPreserveManualDescriptionEdits', 'AudioRespectEmbeddedTags', 'AudioIncludeGenreTags', 'AudioIncludeNftTag', 'AudioFetchPoster']
             };
 
             function encoraBuildVarPalette(containerId, inputId, previewId, variables) {

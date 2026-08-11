@@ -77,12 +77,7 @@ namespace Jellyfin.Plugin.Encora.Providers
                 return result;
             }
 
-            if (info == null || string.IsNullOrWhiteSpace(info.Path))
-            {
-                return result;
-            }
-
-            if (!EncoraLibraryScope.IsPathInScope(_libraryManager, info.Path, Plugin.Instance?.Configuration?.TvLibraryIds))
+            if (info == null)
             {
                 return result;
             }
@@ -94,11 +89,32 @@ namespace Jellyfin.Plugin.Encora.Providers
                 return result;
             }
 
-            var encoraId = EncoraFolderScanner.FindFirstEncoraId(_logger, info.Path);
-            if (string.IsNullOrWhiteSpace(encoraId))
+            string? encoraId;
+            if (!string.IsNullOrWhiteSpace(info.Path))
             {
-                _logger.LogInformation("[Encora] ❌ No Encora ID found under season folder: {Path}", info.Path);
-                return result;
+                if (!EncoraLibraryScope.IsPathInScope(_libraryManager, info.Path, Plugin.Instance?.Configuration?.TvLibraryIds))
+                {
+                    return result;
+                }
+
+                encoraId = EncoraFolderScanner.FindFirstEncoraId(_logger, info.Path);
+                if (string.IsNullOrWhiteSpace(encoraId))
+                {
+                    _logger.LogInformation("[Encora] ❌ No Encora ID found under season folder: {Path}", info.Path);
+                    return result;
+                }
+            }
+            else
+            {
+                // Flat-structure shows have no on-disk season folder, so Jellyfin creates a path-less
+                // "Season Unknown" to hold their episodes and there's nothing to scan. Fall back to the
+                // Series' own bootstrap recording (set by EncoraSeriesMetadataProvider) - its presence
+                // there already proves the series passed the scope/matching checks.
+                if (!info.SeriesProviderIds.TryGetValue("EncoraRecordingId", out encoraId) || string.IsNullOrWhiteSpace(encoraId))
+                {
+                    _logger.LogInformation("[Encora] ❌ No season folder and no Encora series ID to fall back on for season {IndexNumber}", info.IndexNumber);
+                    return result;
+                }
             }
 
             EncoraRecording? recording;
@@ -108,13 +124,13 @@ namespace Jellyfin.Plugin.Encora.Providers
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "[Encora] Error fetching season metadata for {Path}", info.Path);
+                _logger.LogWarning(ex, "[Encora] Error fetching season metadata for {EncoraId}", encoraId);
                 return result;
             }
 
             if (recording == null || string.IsNullOrWhiteSpace(recording.Tour))
             {
-                _logger.LogInformation("[Encora] ❌ Failed to fetch season metadata from Encora for ID {EncoraId} for {Path}", encoraId, info.Path);
+                _logger.LogInformation("[Encora] ❌ Failed to fetch season metadata from Encora for ID {EncoraId}", encoraId);
                 return result;
             }
 
@@ -132,7 +148,7 @@ namespace Jellyfin.Plugin.Encora.Providers
                 season.SetProviderId("StageMediaShowId", recording.Metadata.ShowId.ToString(CultureInfo.InvariantCulture));
             }
 
-            if (Plugin.Instance?.Configuration?.TvFetchPoster ?? true)
+            if ((Plugin.Instance?.Configuration?.TvFetchPoster ?? true) && !string.IsNullOrWhiteSpace(info.Path))
             {
                 var posterPath = Path.Combine(info.Path, "folder.jpg");
                 await EncoraRecordingApplier.FetchStageMediaImagesAsync(_httpClientFactory, _logger, recording, posterPath, cancellationToken).ConfigureAwait(false);

@@ -282,69 +282,29 @@ namespace Jellyfin.Plugin.Encora.Models
         }
 
         /// <summary>
-        /// Downloads and attaches subtitle files for a recording, next to the media file.
+        /// Fetches the list of subtitles Encora has available for a recording. Used by
+        /// <see cref="Providers.EncoraSubtitleProvider"/> so subtitles are exposed through Jellyfin's
+        /// standard subtitle search/download flow rather than downloaded automatically during a metadata
+        /// refresh.
         /// </summary>
-        /// <typeparam name="T">The video item type (Movie or Episode).</typeparam>
         /// <param name="httpClientFactory">Used to create the Encora HTTP client.</param>
-        /// <param name="logger">Logger for diagnostics.</param>
-        /// <param name="item">The item to attach subtitles to.</param>
+        /// <param name="logger">Logger for diagnostics, used by the rate limiter.</param>
         /// <param name="encoraId">The Encora recording ID.</param>
-        /// <param name="mediaPath">The media file path (used to name subtitle files alongside it).</param>
-        /// <param name="mediaDir">The directory containing the media file.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
-        /// <returns>A task representing the asynchronous operation.</returns>
-        public static async Task ApplyRecordingSubtitlesAsync<T>(IHttpClientFactory httpClientFactory, ILogger logger, T item, string encoraId, string mediaPath, string mediaDir, CancellationToken cancellationToken)
-            where T : Video
+        /// <returns>The subtitles Encora has for the recording, or null if none were returned.</returns>
+        public static async Task<List<EncoraSubtitles>?> FetchSubtitlesAsync(IHttpClientFactory httpClientFactory, ILogger logger, string encoraId, CancellationToken cancellationToken)
         {
-            try
-            {
-                var client = httpClientFactory.CreateClient();
-                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Plugin.Instance?.Configuration?.EncoraAPIKey);
-                client.DefaultRequestHeaders.UserAgent.ParseAdd("JellyfinAgent/0.1");
+            var client = httpClientFactory.CreateClient();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Plugin.Instance?.Configuration?.EncoraAPIKey);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("JellyfinAgent/0.1");
 
-                var subtitlesUrl = $"https://encora.it/api/recording/{encoraId}/subtitles";
-                await EncoraRateLimiter.WaitAsync(logger, cancellationToken).ConfigureAwait(false);
-                var subtitlesResponse = await client.GetAsync(subtitlesUrl, cancellationToken).ConfigureAwait(false);
-                EncoraRateLimiter.UpdateFromResponse(subtitlesResponse);
-                subtitlesResponse.EnsureSuccessStatusCode();
-                var subtitlesJson = await subtitlesResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                var subtitles = JsonSerializer.Deserialize<List<EncoraSubtitles>>(subtitlesJson);
-
-                if (subtitles != null && subtitles.Count > 0)
-                {
-                    var mediaFileName = Path.GetFileNameWithoutExtension(mediaPath);
-                    var subtitlePaths = new List<string>();
-
-                    foreach (var sub in subtitles)
-                    {
-                        if (string.IsNullOrWhiteSpace(sub.Url) || string.IsNullOrWhiteSpace(sub.FileType))
-                        {
-                            continue;
-                        }
-
-                        var lang = sub.Language?.Length >= 2
-                            ? sub.Language[..2].ToLowerInvariant()
-                            : "en";
-
-                        var ext = sub.FileType.ToLowerInvariant();
-                        var subFileName = $"{mediaFileName}.{lang}.{ext}";
-                        var subFilePath = Path.Combine(mediaDir, subFileName);
-
-                        var subFileResponse = await client.GetAsync(sub.Url, cancellationToken).ConfigureAwait(false);
-                        subFileResponse.EnsureSuccessStatusCode();
-                        var subFileBytes = await subFileResponse.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
-                        await File.WriteAllBytesAsync(subFilePath, subFileBytes, cancellationToken).ConfigureAwait(false);
-                        subtitlePaths.Add(subFilePath);
-                        item.HasSubtitles = true;
-                    }
-
-                    item.SubtitleFiles = subtitlePaths.ToArray();
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "[Encora] Could not download subtitles for recording {EncoraId}", encoraId);
-            }
+            var subtitlesUrl = $"https://encora.it/api/recording/{encoraId}/subtitles";
+            await EncoraRateLimiter.WaitAsync(logger, cancellationToken).ConfigureAwait(false);
+            var subtitlesResponse = await client.GetAsync(subtitlesUrl, cancellationToken).ConfigureAwait(false);
+            EncoraRateLimiter.UpdateFromResponse(subtitlesResponse);
+            subtitlesResponse.EnsureSuccessStatusCode();
+            var subtitlesJson = await subtitlesResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            return JsonSerializer.Deserialize<List<EncoraSubtitles>>(subtitlesJson);
         }
 
         /// <summary>

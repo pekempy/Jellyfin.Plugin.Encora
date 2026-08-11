@@ -29,7 +29,6 @@ public class PluginConfiguration : BasePluginConfiguration
         MovieProductionLocationSource = "city";
         MovieIncludeGenreTags = true;
         MovieIncludeNftTag = true;
-        MovieDownloadSubtitles = true;
         MovieFetchPoster = true;
         MovieGenerateThumbnail = true;
         MovieThumbnailSeekMinPercent = 15;
@@ -49,7 +48,6 @@ public class PluginConfiguration : BasePluginConfiguration
         TvProductionLocationSource = "city";
         TvIncludeGenreTags = true;
         TvIncludeNftTag = true;
-        TvDownloadSubtitles = true;
         TvFetchPoster = true;
         TvGenerateThumbnail = true;
         TvThumbnailSeekMinPercent = 15;
@@ -152,11 +150,6 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool MovieIncludeNftTag { get; set; }
 
     /// <summary>
-    ///  Gets or sets a value indicating whether subtitles should be downloaded, for Movie libraries.
-    /// </summary>
-    public bool MovieDownloadSubtitles { get; set; }
-
-    /// <summary>
     ///  Gets or sets a value indicating whether a StageMedia poster should be fetched, for Movie libraries.
     /// </summary>
     public bool MovieFetchPoster { get; set; }
@@ -250,11 +243,6 @@ public class PluginConfiguration : BasePluginConfiguration
     ///  Gets or sets a value indicating whether the NFT tag/rating should be added, for TV libraries.
     /// </summary>
     public bool TvIncludeNftTag { get; set; }
-
-    /// <summary>
-    ///  Gets or sets a value indicating whether subtitles should be downloaded, for TV libraries.
-    /// </summary>
-    public bool TvDownloadSubtitles { get; set; }
 
     /// <summary>
     ///  Gets or sets a value indicating whether a StageMedia poster should be fetched for the Series, for TV libraries.

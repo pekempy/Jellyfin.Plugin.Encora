@@ -133,12 +133,6 @@ namespace Jellyfin.Plugin.Encora.Providers
                 EncoraRecordingApplier.ApplyRecordingFields(episode, _libraryManager, info.Path, recording, encoraId, options, _logger);
                 EncoraRecordingApplier.ApplyNftRating(episode, recording.Nft, options.IncludeNftTag);
 
-                if (options.DownloadSubtitles && recording.Metadata?.HasSubtitles == true && !string.IsNullOrWhiteSpace(episodeDir))
-                {
-                    _logger.LogInformation("[Encora] Fetching subtitles for recording {EncoraId}", encoraId);
-                    await EncoraRecordingApplier.ApplyRecordingSubtitlesAsync(_httpClientFactory, _logger, episode, encoraId, info.Path, episodeDir, cancellationToken).ConfigureAwait(false);
-                }
-
                 result.HasMetadata = true;
                 result.Item = episode;
 
@@ -179,7 +173,6 @@ namespace Jellyfin.Plugin.Encora.Providers
                 TaglineSource = config?.TvTaglineSource ?? "tour",
                 IncludeGenreTags = config?.TvIncludeGenreTags ?? true,
                 IncludeNftTag = config?.TvIncludeNftTag ?? true,
-                DownloadSubtitles = config?.TvDownloadSubtitles ?? true,
                 FetchPoster = config?.TvFetchPoster ?? true,
                 GenerateThumbnail = config?.TvGenerateThumbnail ?? true,
                 ThumbnailSeekMinPercent = config?.TvThumbnailSeekMinPercent ?? 15,
