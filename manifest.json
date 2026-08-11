@@ -5,7 +5,7 @@
     "description": "Fetches theatrical performance metadata from https://encora.it\nYou must provide your own API key\n",
     "overview": "Fetches metadata from Encora.it",
     "owner": "pekempy",
-    "imageUrl": "https://raw.githubusercontent.com/pekempy/Jellyfin.Plugin.Encora/master/JellyfinPluginBanner.png",
+    "imageUrl": "https://raw.githubusercontent.com/pekempy/Jellyfin.Plugin.Encora/main/JellyfinPluginBanner.png",
     "category": "General",
     "versions": [
       {
