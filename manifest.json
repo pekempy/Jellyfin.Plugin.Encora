@@ -9,6 +9,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "1.2.0.3",
+        "changelog": "## What's Changed\r\n\r\n### New: Fallback poster\r\n- Movies, Series and Seasons whose show has no poster available on StageMedia now fall back to a placeholder poster instead of ending up with no artwork at all. Applies both to the automatic poster fetch during a scan and to the \"Replace Image\" search dialog.\r\n\r\n**Full Changelog**: https://github.com/pekempy/Jellyfin.Plugin.Encora/compare/1.2.0.2...1.2.0.3",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/1.2.0.3/encora-plugin_1.2.0.3.zip",
+        "checksum": "befc7263a98e9f081bef7ba16b8ad81a",
+        "timestamp": "2026-08-13T09:11:03Z"
+      },
+      {
         "version": "1.2.0.2",
         "changelog": "## What's Changed\r\n\r\n### Fixes\r\n- Jellyfin hot-loads a new plugin version into the running server without unloading the old one first, and the very first time that happens to touch this plugin's settings, Jellyfin's own config loader silently wipes them back to defaults (API keys, library selections, everything) rather than surfacing the failure. The plugin now keeps its own encrypted backup of your settings and automatically restores from it on startup if it ever detects the live configuration has been reset unexpectedly - so an update no longer means re-entering your API keys and re-configuring libraries from scratch.\r\n\r\n### Security\r\n- API keys are encrypted (AES-256-GCM) in the backup file using a key generated once per installation and stored separately with restricted file permissions, rather than sitting in plaintext.\r\n- Sensitive values are masked in log output (only the first and last 3 characters shown) if they're ever referenced in diagnostics.\r\n\r\n**Full Changelog**: https://github.com/pekempy/Jellyfin.Plugin.Encora/compare/1.2.0.1...1.2.0.2",
         "targetAbi": "10.11.0.0",
