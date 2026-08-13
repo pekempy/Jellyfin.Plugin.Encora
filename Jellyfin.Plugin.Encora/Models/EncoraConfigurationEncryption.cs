@@ -101,13 +101,9 @@ namespace Jellyfin.Plugin.Encora.Models
             Directory.CreateDirectory(configFolderPath);
             File.WriteAllText(path, Convert.ToBase64String(key));
 
-            try
+            if (!OperatingSystem.IsWindows())
             {
                 File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-            }
-            catch (PlatformNotSupportedException)
-            {
-                // Windows - no POSIX file modes; nothing more we can do here.
             }
 
             return key;
