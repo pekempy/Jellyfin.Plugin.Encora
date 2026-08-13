@@ -287,9 +287,19 @@ namespace Jellyfin.Plugin.Encora.Models
 
                 if (!string.IsNullOrWhiteSpace(posterDestinationPath) && !File.Exists(posterDestinationPath))
                 {
-                    var hasStageMediaPoster = images?.Posters != null && images.Posters.Count > 0;
-                    var posterUrl = hasStageMediaPoster ? images!.Posters[0] : FallbackPosterUrl;
-                    var posterClient = hasStageMediaPoster ? stageMediaClient : httpClientFactory.CreateClient();
+                    string posterUrl;
+                    HttpClient posterClient;
+
+                    if (images?.Posters != null && images.Posters.Count > 0)
+                    {
+                        posterUrl = images.Posters[0];
+                        posterClient = stageMediaClient;
+                    }
+                    else
+                    {
+                        posterUrl = FallbackPosterUrl;
+                        posterClient = httpClientFactory.CreateClient();
+                    }
 
                     var posterResponse = await posterClient.GetAsync(posterUrl, cancellationToken).ConfigureAwait(false);
                     posterResponse.EnsureSuccessStatusCode();
