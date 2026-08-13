@@ -24,6 +24,11 @@ namespace Jellyfin.Plugin.Encora.Models
     /// </summary>
     public static class EncoraRecordingApplier
     {
+        /// <summary>
+        /// Poster used when StageMedia has no poster for a show, so items don't end up with no artwork at all.
+        /// </summary>
+        public const string FallbackPosterUrl = "https://i.ibb.co/vxtyjRwn/image-psd-3.png";
+
         private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
@@ -280,11 +285,13 @@ namespace Jellyfin.Plugin.Encora.Models
                 var stageMediaJson = await stageMediaResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 var images = JsonSerializer.Deserialize<StageMediaImages>(stageMediaJson);
 
-                if (!string.IsNullOrWhiteSpace(posterDestinationPath) &&
-                    images?.Posters != null && images.Posters.Count > 0 && !File.Exists(posterDestinationPath))
+                if (!string.IsNullOrWhiteSpace(posterDestinationPath) && !File.Exists(posterDestinationPath))
                 {
-                    var posterUrl = images.Posters[0];
-                    var posterResponse = await stageMediaClient.GetAsync(posterUrl, cancellationToken).ConfigureAwait(false);
+                    var hasStageMediaPoster = images?.Posters != null && images.Posters.Count > 0;
+                    var posterUrl = hasStageMediaPoster ? images!.Posters[0] : FallbackPosterUrl;
+                    var posterClient = hasStageMediaPoster ? stageMediaClient : httpClientFactory.CreateClient();
+
+                    var posterResponse = await posterClient.GetAsync(posterUrl, cancellationToken).ConfigureAwait(false);
                     posterResponse.EnsureSuccessStatusCode();
                     var posterBytes = await posterResponse.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
                     await File.WriteAllBytesAsync(posterDestinationPath, posterBytes, cancellationToken).ConfigureAwait(false);

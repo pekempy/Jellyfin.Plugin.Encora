@@ -93,6 +93,16 @@ namespace Jellyfin.Plugin.Encora.Providers
                 }
             }
 
+            if (remoteImages.Count == 0)
+            {
+                remoteImages.Add(new RemoteImageInfo
+                {
+                    ProviderName = Name,
+                    Url = EncoraRecordingApplier.FallbackPosterUrl,
+                    Type = ImageType.Primary
+                });
+            }
+
             return remoteImages;
         }
 
