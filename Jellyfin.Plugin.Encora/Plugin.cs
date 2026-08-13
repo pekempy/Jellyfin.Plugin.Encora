@@ -37,6 +37,8 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
         Instance = this;
         _libraryManager = libraryManager;
         _logger = logger;
+
+        RestoreConfigurationFromBackupIfNeeded();
     }
 
     /// <summary>
@@ -83,5 +85,34 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
         {
             _logger.LogError(ex, "[Encora] Failed to sync library fetcher settings after configuration update");
         }
+
+        EncoraConfigurationBackup.Save(ApplicationPaths.PluginConfigurationsPath, Configuration, _logger);
+    }
+
+    /// <summary>
+    /// Jellyfin hot-loads a new plugin assembly version into a second AssemblyLoadContext without unloading
+    /// the old one, and the very first Configuration access after that throws a cross-context
+    /// InvalidCastException that Jellyfin's own loader silently "recovers" from by overwriting the saved
+    /// config with a fresh default instance. If that's just happened - no API key, but a backup exists -
+    /// restore from the backup immediately so nothing else observes the wiped state.
+    /// </summary>
+    private void RestoreConfigurationFromBackupIfNeeded()
+    {
+        if (!string.IsNullOrWhiteSpace(Configuration.EncoraAPIKey))
+        {
+            return;
+        }
+
+        var backup = EncoraConfigurationBackup.TryLoad(ApplicationPaths.PluginConfigurationsPath, _logger);
+        if (backup == null)
+        {
+            return;
+        }
+
+        _logger.LogWarning(
+            "[Encora] Configuration has no API key set but a backup does (key ending {MaskedKey}) - Jellyfin likely reset it during a plugin update; restoring from backup",
+            EncoraSecretMasking.Mask(backup.EncoraAPIKey));
+        Configuration = backup;
+        SaveConfiguration(Configuration);
     }
 }
