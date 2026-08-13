@@ -229,26 +229,48 @@ namespace Jellyfin.Plugin.Encora.Models
         /// <param name="posterDestinationPath">Where to write the poster, or null to skip poster download.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>The performer headshots returned by StageMedia, if any.</returns>
-        public static async Task<Collection<StageMediaPerformer>> FetchStageMediaImagesAsync(IHttpClientFactory httpClientFactory, ILogger logger, EncoraRecording recording, string? posterDestinationPath, CancellationToken cancellationToken)
+        public static Task<Collection<StageMediaPerformer>> FetchStageMediaImagesAsync(IHttpClientFactory httpClientFactory, ILogger logger, EncoraRecording recording, string? posterDestinationPath, CancellationToken cancellationToken)
+        {
+            if (recording.Metadata?.ShowId is not > 0)
+            {
+                return Task.FromResult(new Collection<StageMediaPerformer>());
+            }
+
+            var actorIds = recording.Cast?.Select(c => c.Performer?.Id.ToString(CultureInfo.InvariantCulture));
+            return FetchStageMediaImagesAsync(httpClientFactory, logger, recording.Metadata.ShowId, actorIds, posterDestinationPath, cancellationToken);
+        }
+
+        /// <summary>
+        /// Fetches StageMedia poster/headshot images for a show, optionally downloading the poster to
+        /// <paramref name="posterDestinationPath"/> if it doesn't already exist. Unlike the
+        /// <see cref="EncoraRecording"/> overload, this doesn't require any specific recording to be
+        /// known - used when a Series has been manually identified/matched directly to an Encora show.
+        /// </summary>
+        /// <param name="httpClientFactory">Used to create the StageMedia HTTP client.</param>
+        /// <param name="logger">Logger for diagnostics.</param>
+        /// <param name="showId">The StageMedia/Encora show ID.</param>
+        /// <param name="actorIds">Cast actor IDs to request headshots for, or null/empty to fetch just the poster pool.</param>
+        /// <param name="posterDestinationPath">Where to write the poster, or null to skip poster download.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>The performer headshots returned by StageMedia, if any.</returns>
+        public static async Task<Collection<StageMediaPerformer>> FetchStageMediaImagesAsync(IHttpClientFactory httpClientFactory, ILogger logger, int showId, IEnumerable<string?>? actorIds, string? posterDestinationPath, CancellationToken cancellationToken)
         {
             var headshots = new Collection<StageMediaPerformer>();
             var stageMediaApiKey = Plugin.Instance?.Configuration?.StageMediaAPIKey;
 
-            if (string.IsNullOrWhiteSpace(stageMediaApiKey) || recording.Metadata?.ShowId is not > 0)
+            if (string.IsNullOrWhiteSpace(stageMediaApiKey))
             {
                 return headshots;
             }
 
-            var actorIds = recording.Cast?
-                .Select(c => c.Performer?.Id.ToString(CultureInfo.InvariantCulture))
-                .ToArray();
-            var actorIdsParam = actorIds != null && actorIds.Length > 0
-                ? string.Join(",", actorIds) : "1";
+            var actorIdsList = actorIds?.ToArray();
+            var actorIdsParam = actorIdsList != null && actorIdsList.Length > 0
+                ? string.Join(",", actorIdsList) : "1";
 
             try
             {
-                logger.LogInformation("[Encora] Fetching StageMedia images for ShowId {ShowId} with ActorIds {ActorIds}", recording.Metadata.ShowId, actorIdsParam);
-                var stageMediaUrl = $"https://stagemedia.me/api/images?show_id={recording.Metadata.ShowId}&actor_ids={actorIdsParam}";
+                logger.LogInformation("[Encora] Fetching StageMedia images for ShowId {ShowId} with ActorIds {ActorIds}", showId, actorIdsParam);
+                var stageMediaUrl = $"https://stagemedia.me/api/images?show_id={showId}&actor_ids={actorIdsParam}";
                 var stageMediaClient = httpClientFactory.CreateClient();
                 stageMediaClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", stageMediaApiKey);
                 stageMediaClient.DefaultRequestHeaders.UserAgent.ParseAdd("JellyfinAgent/0.1");
@@ -275,7 +297,7 @@ namespace Jellyfin.Plugin.Encora.Models
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "[Encora] Could not download and save StageMedia poster for ShowId {ShowId}", recording.Metadata?.ShowId);
+                logger.LogWarning(ex, "[Encora] Could not download and save StageMedia poster for ShowId {ShowId}", showId);
             }
 
             return headshots;

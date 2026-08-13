@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -51,14 +52,46 @@ namespace Jellyfin.Plugin.Encora.Providers
         public int Order => 100;
 
         /// <summary>
-        /// Gets search results for series.
+        /// Searches Encora for shows by name, for Jellyfin's manual "Identify" flow.
         /// </summary>
         /// <param name="searchInfo">The search information.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>A task that represents the asynchronous operation. The task result contains the search results.</returns>
-        public Task<IEnumerable<RemoteSearchResult>> GetSearchResults(SeriesInfo searchInfo, CancellationToken cancellationToken)
+        public async Task<IEnumerable<RemoteSearchResult>> GetSearchResults(SeriesInfo searchInfo, CancellationToken cancellationToken)
         {
-            return Task.FromResult<IEnumerable<RemoteSearchResult>>(new List<RemoteSearchResult>());
+            var apiKey = Plugin.Instance?.Configuration?.EncoraAPIKey;
+            if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(searchInfo?.Name))
+            {
+                return new List<RemoteSearchResult>();
+            }
+
+            List<EncoraShowSearchResult>? shows;
+            try
+            {
+                shows = await EncoraShowClient.SearchShowsAsync(_httpClientFactory, _logger, apiKey, searchInfo.Name, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Encora] Error searching shows for {Query}", searchInfo.Name);
+                return new List<RemoteSearchResult>();
+            }
+
+            if (shows == null)
+            {
+                return new List<RemoteSearchResult>();
+            }
+
+            return shows
+                .Where(show => !string.IsNullOrWhiteSpace(show.Name))
+                .Select(show => new RemoteSearchResult
+                {
+                    Name = show.Name,
+                    ImageUrl = show.PosterUrl,
+                    ProductionYear = show.Year,
+                    SearchProviderName = Name,
+                    ProviderIds = new Dictionary<string, string> { ["EncoraShowId"] = show.Id.ToString(CultureInfo.InvariantCulture) }
+                })
+                .ToList();
         }
 
         /// <summary>
@@ -91,6 +124,11 @@ namespace Jellyfin.Plugin.Encora.Providers
             {
                 _logger.LogInformation("[Encora] ❌ No API key configured, skipping series metadata fetch for {Path}", info.Path);
                 return result;
+            }
+
+            if (info.ProviderIds.TryGetValue("EncoraShowId", out var manualShowId) && !string.IsNullOrWhiteSpace(manualShowId))
+            {
+                return await GetMetadataFromShowAsync(manualShowId, apiKey, info.Path, cancellationToken).ConfigureAwait(false);
             }
 
             var encoraId = EncoraFolderScanner.FindFirstEncoraId(_logger, info.Path);
@@ -141,6 +179,65 @@ namespace Jellyfin.Plugin.Encora.Providers
             {
                 var posterPath = Path.Combine(info.Path, "folder.jpg");
                 await EncoraRecordingApplier.FetchStageMediaImagesAsync(_httpClientFactory, _logger, recording, posterPath, cancellationToken).ConfigureAwait(false);
+            }
+
+            result.HasMetadata = true;
+            result.Item = series;
+            return result;
+        }
+
+        /// <summary>
+        /// Builds Series metadata directly from an Encora show, for a Series that's been manually
+        /// identified/matched (via <see cref="GetSearchResults"/>) rather than bootstrapped from a
+        /// recording found on disk. No specific recording is involved, so this works even for a series
+        /// folder with no Encora-identifiable recordings under it yet.
+        /// </summary>
+        private async Task<MetadataResult<Series>> GetMetadataFromShowAsync(string showId, string apiKey, string path, CancellationToken cancellationToken)
+        {
+            var result = new MetadataResult<Series>();
+
+            EncoraShow? show;
+            try
+            {
+                show = await EncoraShowClient.FetchShowAsync(_httpClientFactory, _logger, apiKey, showId, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Encora] Error fetching show {ShowId}", showId);
+                return result;
+            }
+
+            if (show == null || string.IsNullOrWhiteSpace(show.Name))
+            {
+                _logger.LogInformation("[Encora] ❌ Failed to fetch show metadata from Encora for ShowId {ShowId}", showId);
+                return result;
+            }
+
+            var seriesTitleFormat = Plugin.Instance?.Configuration?.TvSeriesTitleFormat ?? "{show}";
+            var seriesName = EncoraTitleFormatter.Format(seriesTitleFormat, new Dictionary<string, string?>
+            {
+                ["show"] = show.Name,
+                ["venue"] = null,
+                ["city"] = null
+            });
+
+            var series = new Series
+            {
+                Name = seriesName,
+                OriginalTitle = show.Name,
+                SortName = seriesName,
+            };
+
+            var preserveManualDescriptionEdits = Plugin.Instance?.Configuration?.TvPreserveManualDescriptionEdits ?? true;
+            EncoraOverviewGuard.ApplyOverview(series, _libraryManager, path, isFolder: true, string.IsNullOrWhiteSpace(show.Description) ? "No Notes" : show.Description, preserveManualDescriptionEdits, _logger, path);
+
+            series.SetProviderId("EncoraShowId", showId);
+            series.SetProviderId("StageMediaShowId", showId);
+
+            if (Plugin.Instance?.Configuration?.TvFetchPoster ?? true)
+            {
+                var posterPath = Path.Combine(path, "folder.jpg");
+                await EncoraRecordingApplier.FetchStageMediaImagesAsync(_httpClientFactory, _logger, show.Id, null, posterPath, cancellationToken).ConfigureAwait(false);
             }
 
             result.HasMetadata = true;

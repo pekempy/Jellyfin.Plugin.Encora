@@ -95,6 +95,8 @@ Date variants get a suffix, e.g. `December 31, 2024 (3)`. Missing day/month uses
 
 **Auto-refresh** (API Keys tab, off by default) periodically re-checks already-matched items for subtitle/cast/NFT changes, as a normal scheduled task ("Refresh Encora Metadata").
 
+**Duplicate season cleanup** runs automatically as a second pass right after any library scan finishes. Jellyfin's own scanner can occasionally leave two Season rows behind for the same tour (e.g. a race when several recordings are added to a season folder at once) - one real, one a stale partial duplicate. This pass keeps whichever Season has the most episodes and removes the other's database record; files on disk are never touched.
+
 ---
 
 ### Troubleshooting
