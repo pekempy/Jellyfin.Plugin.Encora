@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using Microsoft.Extensions.Logging;
@@ -30,15 +31,8 @@ namespace Jellyfin.Plugin.Encora.Models
         /// <returns>A task that represents the asynchronous operation.</returns>
         public static Task RunAsync(ILibraryManager libraryManager, ILogger logger, CancellationToken cancellationToken)
         {
-            if (libraryManager == null)
-            {
-                throw new ArgumentNullException(nameof(libraryManager));
-            }
-
-            if (logger == null)
-            {
-                throw new ArgumentNullException(nameof(logger));
-            }
+            ArgumentNullException.ThrowIfNull(libraryManager);
+            ArgumentNullException.ThrowIfNull(logger);
 
             if (Plugin.Instance?.Configuration?.EnableTvMatching != true)
             {
@@ -74,7 +68,7 @@ namespace Jellyfin.Plugin.Encora.Models
                     continue;
                 }
 
-                RemoveDuplicateSeasons(libraryManager, logger, series?.Name ?? group.Key.ParentId.ToString(), duplicates);
+                RemoveDuplicateSeasons(libraryManager, logger, series?.Name ?? group.Key.ParentId.ToString("N", CultureInfo.InvariantCulture), duplicates);
             }
 
             return Task.CompletedTask;
