@@ -9,6 +9,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "1.2.0.5",
+        "changelog": "**Full Changelog**: https://github.com/pekempy/Jellyfin.Plugin.Encora/compare/1.2.0.4...1.2.0.5",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/1.2.0.5/encora-plugin_1.2.0.5.zip",
+        "checksum": "7268df5dc992badcbfa8ae6a7bde38c4",
+        "timestamp": "2026-08-14T20:18:18Z"
+      },
+      {
         "version": "1.2.0.3",
         "changelog": "## What's Changed\r\n\r\n### New: Fallback poster\r\n- Movies, Series and Seasons whose show has no poster available on StageMedia now fall back to a placeholder poster instead of ending up with no artwork at all. Applies both to the automatic poster fetch during a scan and to the \"Replace Image\" search dialog.\r\n\r\n**Full Changelog**: https://github.com/pekempy/Jellyfin.Plugin.Encora/compare/1.2.0.2...1.2.0.3",
         "targetAbi": "10.11.0.0",
