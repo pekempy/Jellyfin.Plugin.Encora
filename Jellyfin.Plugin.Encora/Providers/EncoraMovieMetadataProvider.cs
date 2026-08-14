@@ -129,7 +129,7 @@ namespace Jellyfin.Plugin.Encora.Providers
                     _logger.LogInformation("[Encora] ✅ Successfully fetched metadata from Encora for ID {EncoraId}", encoraId);
 
                     var existingMovie = _libraryManager.FindByPath(info.Path, isFolder: false);
-                    var posterPath = options.FetchPoster && !string.IsNullOrWhiteSpace(movieDir) && (existingMovie == null || !existingMovie.HasImage(ImageType.Primary))
+                    var posterPath = options.FetchPoster && !string.IsNullOrWhiteSpace(movieDir) && (existingMovie == null || !existingMovie.HasImage(ImageType.Primary, 0))
                         ? Path.Combine(movieDir, "folder.jpg")
                         : null;
                     var headshots = await EncoraRecordingApplier.FetchStageMediaImagesAsync(_httpClientFactory, _logger, recording, posterPath, cancellationToken).ConfigureAwait(false);

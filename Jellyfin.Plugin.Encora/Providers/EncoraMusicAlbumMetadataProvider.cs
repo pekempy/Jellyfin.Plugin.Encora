@@ -8,6 +8,7 @@ using MediaBrowser.Controller.Entities.Audio;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
 using Microsoft.Extensions.Logging;
 
@@ -137,7 +138,7 @@ namespace Jellyfin.Plugin.Encora.Providers
                 else if (options.FetchPoster)
                 {
                     var existingAlbum = _libraryManager.FindByPath(info.Path, isFolder: true);
-                    if (existingAlbum == null || !existingAlbum.HasImage(ImageType.Primary))
+                    if (existingAlbum == null || !existingAlbum.HasImage(ImageType.Primary, 0))
                     {
                         var posterPath = System.IO.Path.Combine(info.Path, "folder.jpg");
                         await EncoraRecordingApplier.FetchStageMediaImagesAsync(_httpClientFactory, _logger, recording, posterPath, cancellationToken).ConfigureAwait(false);

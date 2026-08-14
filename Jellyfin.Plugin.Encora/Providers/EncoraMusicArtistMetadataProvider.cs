@@ -140,7 +140,7 @@ namespace Jellyfin.Plugin.Encora.Providers
             if (Plugin.Instance?.Configuration?.AudioFetchPoster ?? true)
             {
                 var existingArtist = _libraryManager.FindByPath(info.Path, isFolder: true);
-                if (existingArtist == null || !existingArtist.HasImage(ImageType.Primary))
+                if (existingArtist == null || !existingArtist.HasImage(ImageType.Primary, 0))
                 {
                     var posterPath = Path.Combine(info.Path, "folder.jpg");
                     await EncoraRecordingApplier.FetchStageMediaImagesAsync(_httpClientFactory, _logger, recording, posterPath, cancellationToken).ConfigureAwait(false);

@@ -151,7 +151,7 @@ namespace Jellyfin.Plugin.Encora.Providers
             if ((Plugin.Instance?.Configuration?.TvFetchPoster ?? true) && !string.IsNullOrWhiteSpace(info.Path))
             {
                 var existingSeason = _libraryManager.FindByPath(info.Path, isFolder: true);
-                if (existingSeason == null || !existingSeason.HasImage(ImageType.Primary))
+                if (existingSeason == null || !existingSeason.HasImage(ImageType.Primary, 0))
                 {
                     var posterPath = Path.Combine(info.Path, "folder.jpg");
                     await EncoraRecordingApplier.FetchStageMediaImagesAsync(_httpClientFactory, _logger, recording, posterPath, cancellationToken).ConfigureAwait(false);

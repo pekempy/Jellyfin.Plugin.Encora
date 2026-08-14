@@ -176,7 +176,7 @@ namespace Jellyfin.Plugin.Encora.Providers
             }
 
             var existingSeries = _libraryManager.FindByPath(info.Path, isFolder: true);
-            if ((Plugin.Instance?.Configuration?.TvFetchPoster ?? true) && (existingSeries == null || !existingSeries.HasImage(ImageType.Primary)))
+            if ((Plugin.Instance?.Configuration?.TvFetchPoster ?? true) && (existingSeries == null || !existingSeries.HasImage(ImageType.Primary, 0)))
             {
                 var posterPath = Path.Combine(info.Path, "folder.jpg");
                 await EncoraRecordingApplier.FetchStageMediaImagesAsync(_httpClientFactory, _logger, recording, posterPath, cancellationToken).ConfigureAwait(false);
@@ -236,7 +236,7 @@ namespace Jellyfin.Plugin.Encora.Providers
             series.SetProviderId("StageMediaShowId", showId);
 
             var existingSeriesFromShow = _libraryManager.FindByPath(path, isFolder: true);
-            if ((Plugin.Instance?.Configuration?.TvFetchPoster ?? true) && (existingSeriesFromShow == null || !existingSeriesFromShow.HasImage(ImageType.Primary)))
+            if ((Plugin.Instance?.Configuration?.TvFetchPoster ?? true) && (existingSeriesFromShow == null || !existingSeriesFromShow.HasImage(ImageType.Primary, 0)))
             {
                 var posterPath = Path.Combine(path, "folder.jpg");
                 await EncoraRecordingApplier.FetchStageMediaImagesAsync(_httpClientFactory, _logger, show.Id, null, posterPath, cancellationToken).ConfigureAwait(false);
