@@ -285,26 +285,26 @@ namespace Jellyfin.Plugin.Encora.Models
                 var stageMediaJson = await stageMediaResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 var images = JsonSerializer.Deserialize<StageMediaImages>(stageMediaJson);
 
-                if (!string.IsNullOrWhiteSpace(posterDestinationPath) && !File.Exists(posterDestinationPath))
+                var destinationDir = !string.IsNullOrWhiteSpace(posterDestinationPath) ? Path.GetDirectoryName(posterDestinationPath) : null;
+                if (!string.IsNullOrWhiteSpace(posterDestinationPath) && !HasLocalPosterFile(destinationDir))
                 {
-                    string posterUrl;
-                    HttpClient posterClient;
-
                     if (images?.Posters != null && images.Posters.Count > 0)
                     {
-                        posterUrl = images.Posters[0];
-                        posterClient = stageMediaClient;
+                        var posterUrl = images.Posters[0];
+                        var posterResponse = await stageMediaClient.GetAsync(posterUrl, cancellationToken).ConfigureAwait(false);
+                        posterResponse.EnsureSuccessStatusCode();
+                        var posterBytes = await posterResponse.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+                        await File.WriteAllBytesAsync(posterDestinationPath, posterBytes, cancellationToken).ConfigureAwait(false);
+                        logger.LogInformation("[Encora] Saved StageMedia poster for ShowId {ShowId} to {PosterPath}", showId, posterDestinationPath);
                     }
                     else
                     {
-                        posterUrl = FallbackPosterUrl;
-                        posterClient = httpClientFactory.CreateClient();
+                        logger.LogInformation("[Encora] No posters available from StageMedia for ShowId {ShowId}, skipping poster download", showId);
                     }
-
-                    var posterResponse = await posterClient.GetAsync(posterUrl, cancellationToken).ConfigureAwait(false);
-                    posterResponse.EnsureSuccessStatusCode();
-                    var posterBytes = await posterResponse.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
-                    await File.WriteAllBytesAsync(posterDestinationPath, posterBytes, cancellationToken).ConfigureAwait(false);
+                }
+                else if (!string.IsNullOrWhiteSpace(posterDestinationPath))
+                {
+                    logger.LogInformation("[Encora] Skipping StageMedia poster download for ShowId {ShowId} - local poster image already exists in {Directory}", showId, destinationDir);
                 }
 
                 if (images?.Performers != null && images.Performers.Count > 0)
@@ -318,6 +318,47 @@ namespace Jellyfin.Plugin.Encora.Models
             }
 
             return headshots;
+        }
+
+        /// <summary>
+        /// Checks if a directory already contains any standard poster/cover image file.
+        /// </summary>
+        /// <param name="directory">The directory path to check.</param>
+        /// <returns><c>true</c> if a poster image file already exists; otherwise, <c>false</c>.</returns>
+        public static bool HasLocalPosterFile(string? directory)
+        {
+            if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+            {
+                return false;
+            }
+
+            var posterPrefixes = new[] { "folder", "poster", "cover", "default" };
+            var imageExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"
+            };
+
+            try
+            {
+                var files = Directory.GetFiles(directory);
+                foreach (var file in files)
+                {
+                    var fileNameWithoutExt = Path.GetFileNameWithoutExtension(file);
+                    var ext = Path.GetExtension(file);
+
+                    if (imageExtensions.Contains(ext) &&
+                        posterPrefixes.Any(p => string.Equals(fileNameWithoutExt, p, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore directory read errors and err on the side of caution
+            }
+
+            return false;
         }
 
         /// <summary>

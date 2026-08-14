@@ -136,8 +136,12 @@ namespace Jellyfin.Plugin.Encora.Providers
                 }
                 else if (options.FetchPoster)
                 {
-                    var posterPath = System.IO.Path.Combine(info.Path, "folder.jpg");
-                    await EncoraRecordingApplier.FetchStageMediaImagesAsync(_httpClientFactory, _logger, recording, posterPath, cancellationToken).ConfigureAwait(false);
+                    var existingAlbum = _libraryManager.FindByPath(info.Path, isFolder: true);
+                    if (existingAlbum == null || !existingAlbum.HasImage(ImageType.Primary))
+                    {
+                        var posterPath = System.IO.Path.Combine(info.Path, "folder.jpg");
+                        await EncoraRecordingApplier.FetchStageMediaImagesAsync(_httpClientFactory, _logger, recording, posterPath, cancellationToken).ConfigureAwait(false);
+                    }
                 }
 
                 result.HasMetadata = true;
