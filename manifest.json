@@ -9,6 +9,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "1.2.0.6",
+        "changelog": "## What's Changed\r\n\r\n### Fixes\r\n- Posters are now permanently protected from being re-fetched from StageMedia once an item has one, whether it was set by Encora automatically or picked/uploaded manually. Previously, this was re-evaluated on every refresh, so an existing poster could occasionally still get overwritten (e.g. during a scheduled library scan) if the item lookup used to check for it didn't resolve correctly. Now the first time Encora sees an item has a poster, it stamps it permanently and never touches it again, no matter what future refreshes do.\r\n\r\n**Full Changelog**: https://github.com/pekempy/Jellyfin.Plugin.Encora/compare/1.2.0.5...1.2.0.6\r\n",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/1.2.0.6/encora-plugin_1.2.0.6.zip",
+        "checksum": "558282aec945419d69c447b68ee6e569",
+        "timestamp": "2026-08-18T08:14:32Z"
+      },
+      {
         "version": "1.2.0.5",
         "changelog": "**Full Changelog**: https://github.com/pekempy/Jellyfin.Plugin.Encora/compare/1.2.0.4...1.2.0.5",
         "targetAbi": "10.11.0.0",
