@@ -148,13 +148,25 @@ namespace Jellyfin.Plugin.Encora.Providers
                 season.SetProviderId("StageMediaShowId", recording.Metadata.ShowId.ToString(CultureInfo.InvariantCulture));
             }
 
-            if ((Plugin.Instance?.Configuration?.TvFetchPoster ?? true) && !string.IsNullOrWhiteSpace(info.Path))
+            if (!string.IsNullOrWhiteSpace(info.Path))
             {
                 var existingSeason = _libraryManager.FindByPath(info.Path, isFolder: true);
-                if (existingSeason == null || !existingSeason.HasImage(ImageType.Primary, 0))
+                var posterLocked = EncoraRecordingApplier.IsPosterLocked(existingSeason);
+                var hasExistingImage = existingSeason != null && existingSeason.HasImage(ImageType.Primary, 0);
+
+                if ((Plugin.Instance?.Configuration?.TvFetchPoster ?? true) && !posterLocked && !hasExistingImage)
                 {
                     var posterPath = Path.Combine(info.Path, "folder.jpg");
                     await EncoraRecordingApplier.FetchStageMediaImagesAsync(_httpClientFactory, _logger, recording, posterPath, cancellationToken).ConfigureAwait(false);
+                    if (File.Exists(posterPath))
+                    {
+                        EncoraRecordingApplier.MarkPosterLocked(season);
+                    }
+                }
+
+                if (posterLocked || hasExistingImage)
+                {
+                    EncoraRecordingApplier.MarkPosterLocked(season);
                 }
             }
 

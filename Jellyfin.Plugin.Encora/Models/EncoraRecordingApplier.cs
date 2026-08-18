@@ -29,6 +29,15 @@ namespace Jellyfin.Plugin.Encora.Models
         /// </summary>
         public const string FallbackPosterUrl = "https://i.ibb.co/vxtyjRwn/image-psd-3.png";
 
+        /// <summary>
+        /// ProviderId key used to permanently mark an item as having a resolved poster (whether set by
+        /// Encora or the user), so future refreshes never re-evaluate or re-fetch it - even if a
+        /// <see cref="ILibraryManager.FindByPath"/> lookup or <see cref="BaseItem.HasImage(ImageType, int)"/>
+        /// check happens to be unreliable on a given run (e.g. path-matching edge cases, non-default
+        /// "save images in media folders" settings). This is the one source of truth once set.
+        /// </summary>
+        public const string PosterLockedProviderIdKey = "EncoraPosterLocked";
+
         private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
@@ -359,6 +368,29 @@ namespace Jellyfin.Plugin.Encora.Models
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Checks whether an item's poster has already been permanently locked via
+        /// <see cref="PosterLockedProviderIdKey"/>, meaning Encora must never fetch or write a poster
+        /// for it again.
+        /// </summary>
+        /// <param name="item">The existing item, or null if it couldn't be resolved.</param>
+        /// <returns><c>true</c> if the poster is locked and must not be touched.</returns>
+        public static bool IsPosterLocked(BaseItem? item)
+        {
+            return item != null && item.ProviderIds.ContainsKey(PosterLockedProviderIdKey);
+        }
+
+        /// <summary>
+        /// Permanently marks an item's poster as resolved so no future refresh re-evaluates or
+        /// re-fetches it. Set on the <see cref="MetadataResult{T}.Item"/> being returned from a metadata
+        /// provider; Jellyfin merges provider IDs into the persisted item like any other provider ID.
+        /// </summary>
+        /// <param name="item">The item being returned from metadata resolution.</param>
+        public static void MarkPosterLocked(BaseItem item)
+        {
+            item.SetProviderId(PosterLockedProviderIdKey, "true");
         }
 
         /// <summary>

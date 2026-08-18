@@ -137,14 +137,23 @@ namespace Jellyfin.Plugin.Encora.Providers
                 artist.SetProviderId("StageMediaShowId", recording.Metadata.ShowId.ToString(CultureInfo.InvariantCulture));
             }
 
-            if (Plugin.Instance?.Configuration?.AudioFetchPoster ?? true)
+            var existingArtist = _libraryManager.FindByPath(info.Path, isFolder: true);
+            var posterLocked = EncoraRecordingApplier.IsPosterLocked(existingArtist);
+            var hasExistingImage = existingArtist != null && existingArtist.HasImage(ImageType.Primary, 0);
+
+            if ((Plugin.Instance?.Configuration?.AudioFetchPoster ?? true) && !posterLocked && !hasExistingImage)
             {
-                var existingArtist = _libraryManager.FindByPath(info.Path, isFolder: true);
-                if (existingArtist == null || !existingArtist.HasImage(ImageType.Primary, 0))
+                var posterPath = Path.Combine(info.Path, "folder.jpg");
+                await EncoraRecordingApplier.FetchStageMediaImagesAsync(_httpClientFactory, _logger, recording, posterPath, cancellationToken).ConfigureAwait(false);
+                if (File.Exists(posterPath))
                 {
-                    var posterPath = Path.Combine(info.Path, "folder.jpg");
-                    await EncoraRecordingApplier.FetchStageMediaImagesAsync(_httpClientFactory, _logger, recording, posterPath, cancellationToken).ConfigureAwait(false);
+                    EncoraRecordingApplier.MarkPosterLocked(artist);
                 }
+            }
+
+            if (posterLocked || hasExistingImage)
+            {
+                EncoraRecordingApplier.MarkPosterLocked(artist);
             }
 
             result.HasMetadata = true;

@@ -129,7 +129,9 @@ namespace Jellyfin.Plugin.Encora.Providers
                     _logger.LogInformation("[Encora] ✅ Successfully fetched metadata from Encora for ID {EncoraId}", encoraId);
 
                     var existingMovie = _libraryManager.FindByPath(info.Path, isFolder: false);
-                    var posterPath = options.FetchPoster && !string.IsNullOrWhiteSpace(movieDir) && (existingMovie == null || !existingMovie.HasImage(ImageType.Primary, 0))
+                    var posterLocked = EncoraRecordingApplier.IsPosterLocked(existingMovie);
+                    var hasExistingImage = existingMovie != null && existingMovie.HasImage(ImageType.Primary, 0);
+                    var posterPath = options.FetchPoster && !string.IsNullOrWhiteSpace(movieDir) && !posterLocked && !hasExistingImage
                         ? Path.Combine(movieDir, "folder.jpg")
                         : null;
                     var headshots = await EncoraRecordingApplier.FetchStageMediaImagesAsync(_httpClientFactory, _logger, recording, posterPath, cancellationToken).ConfigureAwait(false);
@@ -146,6 +148,11 @@ namespace Jellyfin.Plugin.Encora.Providers
 
                     EncoraRecordingApplier.ApplyRecordingFields(movie, _libraryManager, info.Path, recording, encoraId, options, _logger);
                     EncoraRecordingApplier.ApplyNftRating(movie, recording.Nft, options.IncludeNftTag);
+
+                    if (posterLocked || hasExistingImage || (posterPath != null && File.Exists(posterPath)))
+                    {
+                        EncoraRecordingApplier.MarkPosterLocked(movie);
+                    }
 
                     result.HasMetadata = true;
                     result.Item = movie;

@@ -130,19 +130,32 @@ namespace Jellyfin.Plugin.Encora.Providers
                 EncoraRecordingApplier.ApplyRecordingFields(album, _libraryManager, info.Path, recording, encoraId, options, _logger);
                 EncoraRecordingApplier.ApplyNftRating(album, recording.Nft, options.IncludeNftTag);
 
+                var existingAlbum = _libraryManager.FindByPath(info.Path, isFolder: true);
+                var posterLocked = EncoraRecordingApplier.IsPosterLocked(existingAlbum);
+                var hasExistingImage = existingAlbum != null && existingAlbum.HasImage(ImageType.Primary, 0);
+
                 var respectEmbeddedTags = Plugin.Instance?.Configuration?.AudioRespectEmbeddedTags ?? true;
-                if (options.FetchPoster && respectEmbeddedTags && await EncoraFolderScanner.FolderHasEmbeddedArtworkAsync(_mediaEncoder, info.Path).ConfigureAwait(false))
+                if (posterLocked)
+                {
+                    _logger.LogInformation("[Encora] Skipping StageMedia poster download for {Path} - poster already locked", info.Path);
+                }
+                else if (options.FetchPoster && respectEmbeddedTags && await EncoraFolderScanner.FolderHasEmbeddedArtworkAsync(_mediaEncoder, info.Path).ConfigureAwait(false))
                 {
                     _logger.LogInformation("[Encora] Skipping StageMedia poster download for {Path} - embedded album art found", info.Path);
                 }
-                else if (options.FetchPoster)
+                else if (options.FetchPoster && !hasExistingImage)
                 {
-                    var existingAlbum = _libraryManager.FindByPath(info.Path, isFolder: true);
-                    if (existingAlbum == null || !existingAlbum.HasImage(ImageType.Primary, 0))
+                    var posterPath = System.IO.Path.Combine(info.Path, "folder.jpg");
+                    await EncoraRecordingApplier.FetchStageMediaImagesAsync(_httpClientFactory, _logger, recording, posterPath, cancellationToken).ConfigureAwait(false);
+                    if (System.IO.File.Exists(posterPath))
                     {
-                        var posterPath = System.IO.Path.Combine(info.Path, "folder.jpg");
-                        await EncoraRecordingApplier.FetchStageMediaImagesAsync(_httpClientFactory, _logger, recording, posterPath, cancellationToken).ConfigureAwait(false);
+                        EncoraRecordingApplier.MarkPosterLocked(album);
                     }
+                }
+
+                if (posterLocked || hasExistingImage)
+                {
+                    EncoraRecordingApplier.MarkPosterLocked(album);
                 }
 
                 result.HasMetadata = true;

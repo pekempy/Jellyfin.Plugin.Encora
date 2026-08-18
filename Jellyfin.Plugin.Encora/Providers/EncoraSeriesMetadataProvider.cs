@@ -176,10 +176,22 @@ namespace Jellyfin.Plugin.Encora.Providers
             }
 
             var existingSeries = _libraryManager.FindByPath(info.Path, isFolder: true);
-            if ((Plugin.Instance?.Configuration?.TvFetchPoster ?? true) && (existingSeries == null || !existingSeries.HasImage(ImageType.Primary, 0)))
+            var posterLocked = EncoraRecordingApplier.IsPosterLocked(existingSeries);
+            var hasExistingImage = existingSeries != null && existingSeries.HasImage(ImageType.Primary, 0);
+
+            if ((Plugin.Instance?.Configuration?.TvFetchPoster ?? true) && !posterLocked && !hasExistingImage)
             {
                 var posterPath = Path.Combine(info.Path, "folder.jpg");
                 await EncoraRecordingApplier.FetchStageMediaImagesAsync(_httpClientFactory, _logger, recording, posterPath, cancellationToken).ConfigureAwait(false);
+                if (File.Exists(posterPath))
+                {
+                    EncoraRecordingApplier.MarkPosterLocked(series);
+                }
+            }
+
+            if (posterLocked || hasExistingImage)
+            {
+                EncoraRecordingApplier.MarkPosterLocked(series);
             }
 
             result.HasMetadata = true;
@@ -236,10 +248,22 @@ namespace Jellyfin.Plugin.Encora.Providers
             series.SetProviderId("StageMediaShowId", showId);
 
             var existingSeriesFromShow = _libraryManager.FindByPath(path, isFolder: true);
-            if ((Plugin.Instance?.Configuration?.TvFetchPoster ?? true) && (existingSeriesFromShow == null || !existingSeriesFromShow.HasImage(ImageType.Primary, 0)))
+            var showPosterLocked = EncoraRecordingApplier.IsPosterLocked(existingSeriesFromShow);
+            var showHasExistingImage = existingSeriesFromShow != null && existingSeriesFromShow.HasImage(ImageType.Primary, 0);
+
+            if ((Plugin.Instance?.Configuration?.TvFetchPoster ?? true) && !showPosterLocked && !showHasExistingImage)
             {
                 var posterPath = Path.Combine(path, "folder.jpg");
                 await EncoraRecordingApplier.FetchStageMediaImagesAsync(_httpClientFactory, _logger, show.Id, null, posterPath, cancellationToken).ConfigureAwait(false);
+                if (File.Exists(posterPath))
+                {
+                    EncoraRecordingApplier.MarkPosterLocked(series);
+                }
+            }
+
+            if (showPosterLocked || showHasExistingImage)
+            {
+                EncoraRecordingApplier.MarkPosterLocked(series);
             }
 
             result.HasMetadata = true;
