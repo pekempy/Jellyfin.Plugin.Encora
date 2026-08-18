@@ -31,10 +31,10 @@ namespace Jellyfin.Plugin.Encora.Models
 
         /// <summary>
         /// ProviderId key used to permanently mark an item as having a resolved poster (whether set by
-        /// Encora or the user), so future refreshes never re-evaluate or re-fetch it - even if a
-        /// <see cref="ILibraryManager.FindByPath"/> lookup or <see cref="BaseItem.HasImage(ImageType, int)"/>
-        /// check happens to be unreliable on a given run (e.g. path-matching edge cases, non-default
-        /// "save images in media folders" settings). This is the one source of truth once set.
+        /// Encora or the user), so future refreshes never re-evaluate or re-fetch it - even if the usual
+        /// item-lookup/HasImage check happens to be unreliable on a given run (e.g. path-matching edge
+        /// cases, non-default "save images in media folders" settings). This is the one source of truth
+        /// once set.
         /// </summary>
         public const string PosterLockedProviderIdKey = "EncoraPosterLocked";
 
@@ -384,8 +384,8 @@ namespace Jellyfin.Plugin.Encora.Models
 
         /// <summary>
         /// Permanently marks an item's poster as resolved so no future refresh re-evaluates or
-        /// re-fetches it. Set on the <see cref="MetadataResult{T}.Item"/> being returned from a metadata
-        /// provider; Jellyfin merges provider IDs into the persisted item like any other provider ID.
+        /// re-fetches it. Set on the item being returned as metadata provider result; Jellyfin merges
+        /// provider IDs into the persisted item like any other provider ID.
         /// </summary>
         /// <param name="item">The item being returned from metadata resolution.</param>
         public static void MarkPosterLocked(BaseItem item)
