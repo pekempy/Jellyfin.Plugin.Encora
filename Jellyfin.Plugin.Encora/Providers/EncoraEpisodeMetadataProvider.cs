@@ -324,32 +324,57 @@ namespace Jellyfin.Plugin.Encora.Providers
                     DateVariant = variantStr
                 };
             }
-            else if (root != null)
+
+            // Check if NFO title contains an explicit date (e.g. "Hadestown (Broadway - 2025-12-06)")
+            if (root != null)
             {
-                var premiered = root.Element("premiered")?.Value ?? root.Element("releasedate")?.Value;
-                if (!string.IsNullOrWhiteSpace(premiered))
+                var titleVal = root.Element("title")?.Value;
+                if (!string.IsNullOrWhiteSpace(titleVal))
                 {
-                    var parts = premiered.Split('-');
-                    if (parts.Length > 0 && int.TryParse(parts[0], out _))
+                    var nfoTitleDateMatch = Regex.Match(titleVal, @"(?:\b|[-_])([0-9]{4})[-_]([0-9]{2})[-_]([0-9]{2})(?:\b|[-_\)])");
+                    if (nfoTitleDateMatch.Success)
                     {
-                        var mKnown = parts.Length > 1 && !parts[1].Equals("00", StringComparison.Ordinal) && !parts[1].Equals("xx", StringComparison.OrdinalIgnoreCase);
-                        var dKnown = parts.Length > 2 && !parts[2].Equals("00", StringComparison.Ordinal) && !parts[2].Equals("xx", StringComparison.OrdinalIgnoreCase);
-                        encoraDate = new EncoraDate
+                        var nfoYear = nfoTitleDateMatch.Groups[1].Value;
+                        var nfoMonth = nfoTitleDateMatch.Groups[2].Value;
+                        var nfoDay = nfoTitleDateMatch.Groups[3].Value;
+
+                        if (encoraDate == null || !encoraDate.DayKnown || !encoraDate.MonthKnown || encoraDate.FullDate?.StartsWith(nfoYear, StringComparison.Ordinal) == true)
                         {
-                            FullDate = $"{parts[0]}-{(mKnown ? parts[1] : "00")}-{(dKnown ? parts[2] : "00")}",
-                            MonthKnown = mKnown,
-                            DayKnown = dKnown
-                        };
+                            encoraDate ??= new EncoraDate();
+                            encoraDate.FullDate = $"{nfoYear}-{nfoMonth}-{nfoDay}";
+                            encoraDate.MonthKnown = true;
+                            encoraDate.DayKnown = true;
+                        }
                     }
                 }
-                else if (int.TryParse(root.Element("year")?.Value, out var y))
+
+                if (encoraDate == null)
                 {
-                    encoraDate = new EncoraDate
+                    var premiered = root.Element("premiered")?.Value ?? root.Element("releasedate")?.Value;
+                    if (!string.IsNullOrWhiteSpace(premiered))
                     {
-                        FullDate = $"{y}-00-00",
-                        MonthKnown = false,
-                        DayKnown = false
-                    };
+                        var parts = premiered.Split('-');
+                        if (parts.Length > 0 && int.TryParse(parts[0], out _))
+                        {
+                            var mKnown = parts.Length > 1 && !parts[1].Equals("00", StringComparison.Ordinal) && !parts[1].Equals("xx", StringComparison.OrdinalIgnoreCase);
+                            var dKnown = parts.Length > 2 && !parts[2].Equals("00", StringComparison.Ordinal) && !parts[2].Equals("xx", StringComparison.OrdinalIgnoreCase);
+                            encoraDate = new EncoraDate
+                            {
+                                FullDate = $"{parts[0]}-{(mKnown ? parts[1] : "00")}-{(dKnown ? parts[2] : "00")}",
+                                MonthKnown = mKnown,
+                                DayKnown = dKnown
+                            };
+                        }
+                    }
+                    else if (int.TryParse(root.Element("year")?.Value, out var y))
+                    {
+                        encoraDate = new EncoraDate
+                        {
+                            FullDate = $"{y}-00-00",
+                            MonthKnown = false,
+                            DayKnown = false
+                        };
+                    }
                 }
             }
 
