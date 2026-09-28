@@ -303,31 +303,71 @@ namespace Jellyfin.Plugin.Encora.Providers
         /// <param name="options">The metadata refresh options.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>A task returning the item update type.</returns>
-        public Task<ItemUpdateType> FetchAsync(Season item, MetadataRefreshOptions options, CancellationToken cancellationToken)
+        public async Task<ItemUpdateType> FetchAsync(Season item, MetadataRefreshOptions options, CancellationToken cancellationToken)
         {
             if (item == null || string.IsNullOrWhiteSpace(item.Path))
             {
-                return Task.FromResult(ItemUpdateType.None);
+                return ItemUpdateType.None;
             }
 
             if (Plugin.Instance?.Configuration?.EnableTvMatching != true)
             {
-                return Task.FromResult(ItemUpdateType.None);
+                return ItemUpdateType.None;
             }
 
             if (!EncoraLibraryScope.IsPathInScope(_libraryManager, item.Path, Plugin.Instance?.Configuration?.TvLibraryIds))
             {
-                return Task.FromResult(ItemUpdateType.None);
+                return ItemUpdateType.None;
             }
 
-            var tour = EncoraTourMarker.ReadTour(_logger, item.Path);
+            string? tour = null;
+            DateTime? premiereDate = null;
+            var encoraId = EncoraFolderScanner.FindFirstEncoraId(_logger, item.Path);
+            if (!string.IsNullOrWhiteSpace(encoraId))
+            {
+                var apiKey = Plugin.Instance?.Configuration?.EncoraAPIKey;
+                if (!string.IsNullOrWhiteSpace(apiKey))
+                {
+                    try
+                    {
+                        var recording = await EncoraRecordingApplier.FetchRecordingAsync(_httpClientFactory, _logger, apiKey, encoraId, cancellationToken).ConfigureAwait(false);
+                        if (recording != null && !string.IsNullOrWhiteSpace(recording.Tour))
+                        {
+                            var seasonTitleFormat = Plugin.Instance?.Configuration?.TvSeasonTitleFormat ?? "{tour}";
+                            tour = EncoraTitleFormatter.FormatTourTitle(seasonTitleFormat, recording);
+                            if (DateTime.TryParse(recording.Date?.FullDate, out var date))
+                            {
+                                premiereDate = date;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[Encora] [CustomProvider] Error fetching season recording for ID {EncoraId}", encoraId);
+                    }
+                }
+            }
+
             if (string.IsNullOrWhiteSpace(tour))
+            {
+                tour = EncoraTourMarker.ReadTour(_logger, item.Path);
+            }
+
+            if (string.IsNullOrWhiteSpace(tour) && string.IsNullOrWhiteSpace(encoraId))
             {
                 var nfoResult = HandleNonEncoraSeason(new SeasonInfo { Path = item.Path });
                 if (nfoResult.HasMetadata && nfoResult.Item != null)
                 {
                     tour = nfoResult.Item.Name;
+                    premiereDate = nfoResult.Item.PremiereDate;
                 }
+            }
+
+            var updated = false;
+            if (premiereDate.HasValue && item.PremiereDate != premiereDate)
+            {
+                item.PremiereDate = premiereDate;
+                updated = true;
             }
 
             if (!string.IsNullOrWhiteSpace(tour) && !string.Equals(item.Name, tour, StringComparison.Ordinal))
@@ -335,6 +375,7 @@ namespace Jellyfin.Plugin.Encora.Providers
                 _logger.LogInformation("[Encora] [CustomProvider] Overriding Season Name from '{OldName}' to '{NewName}' for {Path}", item.Name, tour, item.Path);
                 item.Name = tour;
                 item.IndexNumber = EncoraSeasonIndexResolver.ResolveIndexNumber(_libraryManager, item.SeriesId, item.Id, item.PremiereDate, item.Name);
+                updated = true;
 
                 _ = Task.Run(
                     async () =>
@@ -350,11 +391,9 @@ namespace Jellyfin.Plugin.Encora.Providers
                         }
                     },
                     CancellationToken.None);
-
-                return Task.FromResult(ItemUpdateType.MetadataEdit);
             }
 
-            return Task.FromResult(ItemUpdateType.None);
+            return updated ? ItemUpdateType.MetadataEdit : ItemUpdateType.None;
         }
 
         /// <summary>

@@ -105,7 +105,20 @@ namespace Jellyfin.Plugin.Encora.Models
                 episode.SeriesId,
                 episodePath);
 
-            await EncoraSeasonMerger.MergeAsync(libraryManager, logger, episode.SeriesId, newName, protectItemId: null, cancellationToken).ConfigureAwait(false);
+            _ = Task.Run(
+                async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(2500).ConfigureAwait(false);
+                        await EncoraSeasonMerger.MergeAsync(libraryManager, logger, episode.SeriesId, newName, protectItemId: null, CancellationToken.None).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex, "[Encora] Failed in post-delay Season merge from episode patcher for {Path}", episodePath);
+                    }
+                },
+                CancellationToken.None);
         }
     }
 }

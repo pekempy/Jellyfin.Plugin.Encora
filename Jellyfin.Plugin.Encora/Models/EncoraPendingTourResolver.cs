@@ -29,6 +29,11 @@ namespace Jellyfin.Plugin.Encora.Models
                 return false;
             }
 
+            if (path.Contains("{e-", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
             config.PendingTourAssignments.Add(new EncoraPendingTourAssignment
             {
                 Path = path,
@@ -51,6 +56,15 @@ namespace Jellyfin.Plugin.Encora.Models
             ArgumentNullException.ThrowIfNull(config);
             ArgumentNullException.ThrowIfNull(logger);
 
+            var invalid = config.PendingTourAssignments
+                .Where(p => p.Path != null && p.Path.Contains("{e-", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            foreach (var bad in invalid)
+            {
+                config.PendingTourAssignments.Remove(bad);
+            }
+
             var resolved = config.PendingTourAssignments
                 .Where(p => !string.IsNullOrWhiteSpace(p.AssignedTour))
                 .ToList();
@@ -61,7 +75,7 @@ namespace Jellyfin.Plugin.Encora.Models
                 config.PendingTourAssignments.Remove(assignment);
             }
 
-            return resolved.Count > 0;
+            return invalid.Count > 0 || resolved.Count > 0;
         }
     }
 }
