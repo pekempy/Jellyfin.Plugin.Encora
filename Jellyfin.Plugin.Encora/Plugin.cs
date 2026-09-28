@@ -86,6 +86,18 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
             _logger.LogError(ex, "[Encora] Failed to sync library fetcher settings after configuration update");
         }
 
+        try
+        {
+            if (EncoraPendingTourResolver.ResolveAssignments(Configuration, _logger))
+            {
+                SaveConfiguration(Configuration);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[Encora] Failed to resolve pending tour assignments after configuration update");
+        }
+
         EncoraConfigurationBackup.Save(ApplicationPaths.PluginConfigurationsPath, Configuration, _logger);
     }
 

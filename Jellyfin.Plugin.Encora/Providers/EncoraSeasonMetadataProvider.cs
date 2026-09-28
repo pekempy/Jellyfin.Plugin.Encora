@@ -100,8 +100,7 @@ namespace Jellyfin.Plugin.Encora.Providers
                 encoraId = EncoraFolderScanner.FindFirstEncoraId(_logger, info.Path);
                 if (string.IsNullOrWhiteSpace(encoraId))
                 {
-                    _logger.LogInformation("[Encora] ❌ No Encora ID found under season folder: {Path}", info.Path);
-                    return result;
+                    return HandleNonEncoraSeason(info);
                 }
             }
             else
@@ -178,6 +177,57 @@ namespace Jellyfin.Plugin.Encora.Providers
 
             result.HasMetadata = true;
             result.Item = season;
+            return result;
+        }
+
+        /// <summary>
+        /// Handles a season folder with no resolvable Encora ID: uses an <see cref="EncoraTourMarker"/>
+        /// if one has already been assigned (manually, or via a previous run of this method), otherwise
+        /// registers the folder as needing a manual tour assignment via the config page's
+        /// "Non-Encora Recordings Needing a Tour" section and leaves the Season untouched.
+        /// </summary>
+        /// <param name="info">The season information.</param>
+        /// <returns>The metadata result: a minimal Season if a tour override was found, otherwise empty.</returns>
+        private MetadataResult<Season> HandleNonEncoraSeason(SeasonInfo info)
+        {
+            var result = new MetadataResult<Season>();
+
+            var tour = EncoraTourMarker.ReadTour(_logger, info.Path);
+            if (!string.IsNullOrWhiteSpace(tour))
+            {
+                var season = new Season { Name = tour };
+
+                var existingSeason = _libraryManager.FindByPath(info.Path, isFolder: true) as Season;
+                if (existingSeason != null)
+                {
+                    season.IndexNumber = EncoraSeasonIndexResolver.ResolveIndexNumber(_libraryManager, existingSeason.SeriesId, info.Path, season.PremiereDate, season.Name);
+                }
+
+                _logger.LogInformation("[Encora] ✅ Using tour override '{Tour}' for non-Encora season folder: {Path}", tour, info.Path);
+                result.HasMetadata = true;
+                result.Item = season;
+                return result;
+            }
+
+            _logger.LogInformation("[Encora] ❌ No Encora ID and no tour override found under season folder: {Path}", info.Path);
+
+            var config = Plugin.Instance?.Configuration;
+            if (config != null)
+            {
+                var seriesName = (_libraryManager.FindByPath(info.Path, isFolder: true) as Season) is { } season2
+                    ? _libraryManager.GetItemById(season2.SeriesId)?.Name ?? "Unknown Show"
+                    : "Unknown Show";
+                var recordingLabel = Path.GetFileName(info.Path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+
+                if (EncoraPendingTourResolver.RegisterPending(config, info.Path, seriesName, recordingLabel))
+                {
+                    _logger.LogWarning(
+                        "[Encora] 🏷️ Non-Encora recording needs a tour assignment - configure it under Dashboard → Plugins → Encora → Videos - TV Library: {Path}",
+                        info.Path);
+                    Plugin.Instance!.SaveConfiguration(config);
+                }
+            }
+
             return result;
         }
 

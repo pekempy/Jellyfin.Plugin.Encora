@@ -68,6 +68,8 @@ public class PluginConfiguration : BasePluginConfiguration
         AudioIncludeGenreTags = true;
         AudioIncludeNftTag = true;
         AudioFetchPoster = true;
+
+        PendingTourAssignments = new Collection<EncoraPendingTourAssignment>();
     }
 
     /// <summary>
@@ -343,4 +345,15 @@ public class PluginConfiguration : BasePluginConfiguration
     ///  Gets or sets a value indicating whether a StageMedia poster should be fetched for the Artist/Album, for Music libraries.
     /// </summary>
     public bool AudioFetchPoster { get; set; }
+
+    // ----- Non-Encora tour assignments -----
+
+    /// <summary>
+    ///  Gets or sets the non-Encora TV recordings awaiting a manual tour/Season assignment. Populated by
+    ///  <see cref="Jellyfin.Plugin.Encora.Models.EncoraPendingTourResolver"/>, surfaced on the config
+    ///  page's TV tab.
+    /// </summary>
+#pragma warning disable CA2227 // Collection properties should be read only
+    public Collection<EncoraPendingTourAssignment> PendingTourAssignments { get; set; }
+#pragma warning restore CA2227
 }

@@ -848,6 +848,15 @@
                                     <div class="fieldDescription">The thumbnail is taken at a random point within this range.</div>
                                 </div>
                                 </div>
+
+                                <h2 class="sectionTitle encoraCollapsibleHeader encoraExpanded">Non-Encora Recordings Needing a Tour</h2>
+                                <div class="encoraCollapsibleContent">
+                                <div class="fieldDescription">
+                                    Recordings with no resolvable Encora ID (commissions, pre-Encora bootlegs, etc.) can't have their tour/Season looked up automatically. Assign one below and save - Encora writes a <code>.encora-tour</code> marker file next to the recording so future scans pick it up without asking again.
+                                </div>
+                                <div id="EncoraPendingTourList"></div>
+                                <div class="fieldDescription" id="EncoraPendingTourEmpty">Nothing pending.</div>
+                                </div>
                             </div>
 
                             <!-- ============ Audios - Music Library ============ -->
@@ -1207,6 +1216,44 @@
                 });
             }
 
+            function encoraRenderPendingTours(list) {
+                var container = document.getElementById('EncoraPendingTourList');
+                var emptyMsg = document.getElementById('EncoraPendingTourEmpty');
+                container.innerHTML = '';
+
+                if (!list || list.length === 0) {
+                    emptyMsg.classList.remove('hide');
+                    return;
+                }
+
+                emptyMsg.classList.add('hide');
+
+                list.forEach(function (item) {
+                    var row = document.createElement('div');
+                    row.className = 'inputContainer';
+
+                    var label = document.createElement('label');
+                    label.className = 'inputLabel inputLabelUnfocused';
+                    label.textContent = item.SeriesName + ' - ' + item.RecordingLabel;
+
+                    var input = document.createElement('input');
+                    input.type = 'text';
+                    input.setAttribute('is', 'emby-input');
+                    input.setAttribute('data-pending-tour-path', item.Path);
+                    input.placeholder = 'Tour name, e.g. Broadway';
+                    input.value = item.AssignedTour || '';
+
+                    var pathHint = document.createElement('div');
+                    pathHint.className = 'fieldDescription';
+                    pathHint.textContent = item.Path;
+
+                    row.appendChild(label);
+                    row.appendChild(input);
+                    row.appendChild(pathHint);
+                    container.appendChild(row);
+                });
+            }
+
             window.addEventListener("pageshow", function () {
                 var page = document.getElementById("EncoraConfigPage");
                 var navButtons = page.querySelectorAll(".encoraNavButton");
@@ -1315,6 +1362,7 @@
                     encoraRenderLibraryScope('MovieLibraryScopeList', folders, 'movies', config.MovieLibraryIds || []);
                     encoraRenderLibraryScope('TvLibraryScopeList', folders, 'tvshows', config.TvLibraryIds || []);
                     encoraRenderLibraryScope('AudioLibraryScopeList', folders, 'music', config.AudioLibraryIds || []);
+                    encoraRenderPendingTours(config.PendingTourAssignments || []);
                 });
 
                 const saveBtn = document.getElementById("EncoraSaveButton");
@@ -1338,6 +1386,16 @@
                         config.MovieLibraryIds = encoraGetLibraryScopeIds('MovieLibraryScopeList');
                         config.TvLibraryIds = encoraGetLibraryScopeIds('TvLibraryScopeList');
                         config.AudioLibraryIds = encoraGetLibraryScopeIds('AudioLibraryScopeList');
+
+                        var pendingInputs = document.querySelectorAll('[data-pending-tour-path]');
+                        (config.PendingTourAssignments || []).forEach(function (entry) {
+                            var input = Array.prototype.find.call(pendingInputs, function (el) {
+                                return el.getAttribute('data-pending-tour-path') === entry.Path;
+                            });
+                            if (input) {
+                                entry.AssignedTour = input.value;
+                            }
+                        });
 
                         ApiClient.updatePluginConfiguration(EncoraConfig.pluginUniqueId, config).then(function (result) {
                             Dashboard.processPluginConfigurationUpdateResult(result);
