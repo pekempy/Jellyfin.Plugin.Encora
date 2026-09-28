@@ -3,9 +3,20 @@
 # pekempy org, not jellyfin, so the cross-owner form is required (same-owner repos can use the short form).
 _extends: jellyfin/jellyfin-meta-plugins
 
+# The base config's name/tag templates ('Version $NEXT_MAJOR_VERSION') assume single-digit versioning.
+# This repo uses 4-part X.Y.Z.W tags (1.2.0.7, ...) where only the last segment increments - release-
+# drafter's version engine only parses 3-part MAJOR.MINOR.PATCH tags, so it can never correctly compute
+# that 4th digit (it drops it entirely when reading the last tag). There's no template expression that
+# derives the right next value from that, so the draft's suggested name/tag always needs a manual edit
+# to the real next X.Y.Z.W version before publishing - this just avoids suggesting a misleading
+# "Version N" in the meantime.
+name-template: 'Draft (edit tag/title to the real next X.Y.Z.W version before publishing)'
+tag-template: 'edit-me'
+
 template: |
   <!-- Optional: add a release summary here -->
-  [Plugin build can be downloaded here](https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/v$NEXT_MAJOR_VERSION/encora-plugin_$NEXT_MAJOR_VERSION.0.0.0.zip).
+  <!-- FIXME: Plugin build download link - fill in the real published version, e.g.
+       https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/1.2.0.8/encora-plugin_1.2.0.8.zip -->
 
   ## :sparkles: What's New
 
