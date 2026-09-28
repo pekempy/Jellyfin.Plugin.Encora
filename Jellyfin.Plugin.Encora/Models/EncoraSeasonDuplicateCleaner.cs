@@ -89,6 +89,35 @@ namespace Jellyfin.Plugin.Encora.Models
                 RemoveDuplicateSeasons(libraryManager, logger, series?.Name ?? group.Key.ParentId.ToString("N", CultureInfo.InvariantCulture), duplicates);
             }
 
+            // Seasons can also end up orphaned outside any name-matching group - e.g. a Season that was
+            // the "keeper" of an earlier merge, then lost its own episode(s) to a later merge pass once a
+            // rescan re-fragmented and re-resolved a new keeper under the same tour name. With no Path and
+            // no episodes left, a pathless Season's own display Name is whatever Jellyfin's local scanner
+            // last happened to fall back to (e.g. "Series 5") - it will never match any other Season by
+            // name, so it's invisible to the grouped passes above. Safe to remove outright: nothing to
+            // lose (0 episodes, no on-disk folder).
+            foreach (var orphan in seasons.Where(season => string.IsNullOrWhiteSpace(season.Path)))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (CountEpisodes(libraryManager, orphan) > 0)
+                {
+                    continue;
+                }
+
+                var series = libraryManager.GetItemById(orphan.ParentId);
+                if (string.IsNullOrWhiteSpace(series?.Path) || !EncoraLibraryScope.IsPathInScope(libraryManager, series.Path, tvLibraryIds))
+                {
+                    continue;
+                }
+
+                libraryManager.DeleteItem(orphan, new DeleteOptions { DeleteFileLocation = false });
+                logger.LogWarning(
+                    "[Encora] 🧹 Removed empty orphaned Season '{SeasonName}' under series '{SeriesName}' (no episodes, no on-disk folder)",
+                    orphan.Name,
+                    series.Name);
+            }
+
             return Task.CompletedTask;
         }
 

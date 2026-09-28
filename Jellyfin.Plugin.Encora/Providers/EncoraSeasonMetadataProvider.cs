@@ -156,6 +156,12 @@ namespace Jellyfin.Plugin.Encora.Providers
                 if (existingSeason != null)
                 {
                     season.IndexNumber = EncoraSeasonIndexResolver.ResolveIndexNumber(_libraryManager, existingSeason.SeriesId, existingSeason.Id, season.PremiereDate, season.Name);
+
+                    // Confirmed by testing: Jellyfin ties Season identity to the physical recording
+                    // folder one-to-one, so a multi-recording tour ends up as several same-named Seasons
+                    // here (one per folder) every time this runs, not just the first time - merge them
+                    // back together immediately rather than only via a separate batch pass.
+                    await EncoraSeasonMerger.MergeAsync(_libraryManager, _logger, existingSeason.SeriesId, season.Name, existingSeason.Id, cancellationToken).ConfigureAwait(false);
                 }
 
                 var posterLocked = EncoraRecordingApplier.IsPosterLocked(existingSeason);
