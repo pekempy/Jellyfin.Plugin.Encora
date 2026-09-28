@@ -130,8 +130,10 @@ namespace Jellyfin.Plugin.Encora.Models
         /// Computes a stable chronological-sort-order integer for a recording date, encoded as YYYYMMDD
         /// with a trailing session/act digit. Jellyfin orders episodes within a season by <c>IndexNumber</c>
         /// specifically (not by <c>ForcedSortName</c>), so Episodes need an actual numeric index to sort
-        /// chronologically - unlike Seasons, where there are normally few enough siblings that a numberless,
-        /// name-only fallback is an acceptable trade for not showing a nonsensical-looking season number.
+        /// chronologically. Seasons get their own chronological IndexNumber too (see
+        /// <see cref="EncoraSeasonIndexResolver"/>) rather than this YYYYMMDD scheme, since Jellyfin's
+        /// local folder-name scanner already assigns Seasons a raw digit and leaving IndexNumber unset
+        /// does not clear that pre-existing, often nonsensical, folder-derived number.
         /// </summary>
         /// <param name="date">The recording date.</param>
         /// <param name="path">The file path, used to detect an "Act N" suffix.</param>

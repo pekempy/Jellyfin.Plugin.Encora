@@ -150,7 +150,13 @@ namespace Jellyfin.Plugin.Encora.Providers
 
             if (!string.IsNullOrWhiteSpace(info.Path))
             {
-                var existingSeason = _libraryManager.FindByPath(info.Path, isFolder: true);
+                var existingSeason = _libraryManager.FindByPath(info.Path, isFolder: true) as Season;
+
+                if (existingSeason != null)
+                {
+                    season.IndexNumber = EncoraSeasonIndexResolver.ResolveIndexNumber(_libraryManager, existingSeason.SeriesId, info.Path, season.PremiereDate, season.Name);
+                }
+
                 var posterLocked = EncoraRecordingApplier.IsPosterLocked(existingSeason);
                 var hasExistingImage = existingSeason != null && existingSeason.HasImage(ImageType.Primary, 0);
 
