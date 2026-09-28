@@ -9,6 +9,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "1.2.1.0",
+        "changelog": "**Full Changelog**: https://github.com/pekempy/Jellyfin.Plugin.Encora/compare/1.2.0.9...1.2.1.0",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/1.2.1.0/encora-plugin_1.2.1.0.zip",
+        "checksum": "a1ddfcfce10266225786972ca0f04770",
+        "timestamp": "2026-09-28T18:20:30Z"
+      },
+      {
         "version": "1.2.0.9",
         "changelog": "\r\n## What's New\r\n\r\n* attempting to merge seasons for flat libraries\r\n",
         "targetAbi": "10.11.0.0",
