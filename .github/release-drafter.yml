@@ -1,0 +1,12 @@
+# Configuration for Release Drafter: https://github.com/release-drafter/release-drafter
+# Extends the shared Jellyfin plugin base config (categories/labels/etc.) - this repo lives under the
+# pekempy org, not jellyfin, so the cross-owner form is required (same-owner repos can use the short form).
+_extends: jellyfin/jellyfin-meta-plugins
+
+template: |
+  <!-- Optional: add a release summary here -->
+  [Plugin build can be downloaded here](https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/v$NEXT_MAJOR_VERSION/encora-plugin_$NEXT_MAJOR_VERSION.0.0.0.zip).
+
+  ## :sparkles: What's New
+
+  $CHANGES
