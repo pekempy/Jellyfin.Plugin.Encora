@@ -281,6 +281,39 @@ namespace Jellyfin.Plugin.Encora.Providers
                 }
             }
 
+            if (string.IsNullOrWhiteSpace(nfoPath) || !File.Exists(nfoPath))
+            {
+                try
+                {
+                    var fileInfo = new FileInfo(info.Path);
+                    if (fileInfo.LinkTarget != null)
+                    {
+                        var targetPath = fileInfo.ResolveLinkTarget(true)?.FullName;
+                        if (!string.IsNullOrWhiteSpace(targetPath))
+                        {
+                            var sourceDir = Path.GetDirectoryName(targetPath);
+                            if (!string.IsNullOrWhiteSpace(sourceDir) && Directory.Exists(sourceDir))
+                            {
+                                nfoPath = Path.ChangeExtension(targetPath, ".nfo");
+                                if (!File.Exists(nfoPath))
+                                {
+                                    nfoPath = Path.Combine(sourceDir, "movie.nfo");
+                                }
+
+                                if (!File.Exists(nfoPath))
+                                {
+                                    nfoPath = Directory.EnumerateFiles(sourceDir, "*.nfo").FirstOrDefault();
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "[Encora] [NFO] Could not inspect symlink source for NFO at {Path}", info.Path);
+                }
+            }
+
             XElement? root = null;
             if (!string.IsNullOrWhiteSpace(nfoPath) && File.Exists(nfoPath))
             {
