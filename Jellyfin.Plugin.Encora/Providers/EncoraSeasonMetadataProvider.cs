@@ -253,9 +253,9 @@ namespace Jellyfin.Plugin.Encora.Providers
                                 {
                                     try
                                     {
-                                        await Task.Delay(1000).ConfigureAwait(false);
+                                        await Task.Delay(2000).ConfigureAwait(false);
                                         await _libraryManager.UpdateItemAsync(existingSeason, series, ItemUpdateType.MetadataEdit, CancellationToken.None).ConfigureAwait(false);
-                                        await EncoraSeasonMerger.MergeAsync(_libraryManager, _logger, existingSeason.SeriesId, tour, protectItemId: null, CancellationToken.None).ConfigureAwait(false);
+                                        await EncoraSeasonMerger.MergeAsync(_libraryManager, _logger, existingSeason.SeriesId, tour, protectItemId: existingSeason.Id, CancellationToken.None).ConfigureAwait(false);
                                         _logger.LogInformation("[Encora] ✅ Updated and merged Season '{Tour}' in LibraryManager for {Path}", tour, info.Path);
                                     }
                                     catch (Exception ex)
@@ -341,8 +341,8 @@ namespace Jellyfin.Plugin.Encora.Providers
                     {
                         try
                         {
-                            await Task.Delay(1500).ConfigureAwait(false);
-                            await EncoraSeasonMerger.MergeAsync(_libraryManager, _logger, item.SeriesId, tour, protectItemId: null, CancellationToken.None).ConfigureAwait(false);
+                            await Task.Delay(2000).ConfigureAwait(false);
+                            await EncoraSeasonMerger.MergeAsync(_libraryManager, _logger, item.SeriesId, tour, protectItemId: item.Id, CancellationToken.None).ConfigureAwait(false);
                         }
                         catch (Exception ex)
                         {

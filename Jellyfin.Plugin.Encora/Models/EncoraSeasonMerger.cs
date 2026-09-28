@@ -182,6 +182,22 @@ namespace Jellyfin.Plugin.Encora.Models
                     keeper.IndexNumber = newIndexNumber;
                     await libraryManager.UpdateItemAsync(keeper, series, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
                 }
+
+                var allEpisodes = libraryManager.GetItemList(new InternalItemsQuery
+                {
+                    ParentId = keeper.Id,
+                    IncludeItemTypes = new[] { BaseItemKind.Episode },
+                    Recursive = true
+                }).OfType<Episode>().ToList();
+
+                foreach (var ep in allEpisodes)
+                {
+                    if (ep.ParentIndexNumber != keeper.IndexNumber)
+                    {
+                        ep.ParentIndexNumber = keeper.IndexNumber;
+                        await libraryManager.UpdateItemAsync(ep, keeper, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                    }
+                }
             }
         }
     }
