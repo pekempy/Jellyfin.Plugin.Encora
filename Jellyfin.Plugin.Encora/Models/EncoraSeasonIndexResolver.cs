@@ -24,11 +24,16 @@ namespace Jellyfin.Plugin.Encora.Models
         /// </summary>
         /// <param name="libraryManager">The library manager.</param>
         /// <param name="seriesId">The parent Series' Id.</param>
-        /// <param name="currentPath">The current Season's on-disk path.</param>
+        /// <param name="currentSeasonId">
+        /// The current Season's own Id, used to exclude it from its own sibling ranking. Excluding by Id
+        /// rather than Path, since Seasons published without a physical Season folder (S##E## embedded
+        /// directly in each episode's filename instead) have no Path at all - multiple such Seasons would
+        /// all share a null/empty Path and be indistinguishable from each other by that alone.
+        /// </param>
         /// <param name="currentPremiereDate">The current Season's freshly-resolved PremiereDate.</param>
         /// <param name="currentName">The current Season's freshly-resolved Name.</param>
         /// <returns>The 1-based rank to use as IndexNumber.</returns>
-        public static int ResolveIndexNumber(ILibraryManager libraryManager, Guid seriesId, string currentPath, DateTime? currentPremiereDate, string? currentName)
+        public static int ResolveIndexNumber(ILibraryManager libraryManager, Guid seriesId, Guid currentSeasonId, DateTime? currentPremiereDate, string? currentName)
         {
             var siblingDates = libraryManager.GetItemList(new InternalItemsQuery
             {
@@ -36,7 +41,7 @@ namespace Jellyfin.Plugin.Encora.Models
                 IncludeItemTypes = new[] { BaseItemKind.Season },
                 Recursive = true
             }).OfType<Season>()
-              .Where(season => !string.Equals(season.Path, currentPath, StringComparison.OrdinalIgnoreCase))
+              .Where(season => season.Id != currentSeasonId)
               .Select(season => (Date: season.PremiereDate, Name: season.Name ?? string.Empty))
               .Append((Date: currentPremiereDate, Name: currentName ?? string.Empty))
               .OrderBy(x => x.Date ?? DateTime.MaxValue)

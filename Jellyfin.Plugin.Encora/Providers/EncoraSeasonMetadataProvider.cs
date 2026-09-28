@@ -105,15 +105,17 @@ namespace Jellyfin.Plugin.Encora.Providers
             }
             else
             {
-                // Flat-structure shows have no on-disk season folder, so Jellyfin creates a path-less
-                // "Season Unknown" to hold their episodes and there's nothing to scan. Fall back to the
-                // Series' own bootstrap recording (set by EncoraSeriesMetadataProvider) - its presence
-                // there already proves the series passed the scope/matching checks.
-                if (!info.SeriesProviderIds.TryGetValue("EncoraRecordingId", out encoraId) || string.IsNullOrWhiteSpace(encoraId))
-                {
-                    _logger.LogInformation("[Encora] ❌ No season folder and no Encora series ID to fall back on for season {IndexNumber}", info.IndexNumber);
-                    return result;
-                }
+                // Flat-structure shows (no on-disk Season folder - S##E## embedded directly in each
+                // episode's filename instead, e.g. bootleg-linker's per-recording-folder layout) have
+                // nothing here to scan for "the" recording defining this specific Season's tour - unlike
+                // the folder-based case, the Series' single bootstrap recording is not a safe substitute,
+                // since a multi-tour show would wrongly get every Season named after the same one tour.
+                // EncoraSeasonPatcher patches this Season directly once one of its own Episodes has been
+                // resolved instead (it unambiguously knows its own Season via Episode.SeasonId).
+                _logger.LogInformation(
+                    "[Encora] No on-disk season folder for season {IndexNumber} - deferring to episode-side patching",
+                    info.IndexNumber);
+                return result;
             }
 
             EncoraRecording? recording;
@@ -153,7 +155,7 @@ namespace Jellyfin.Plugin.Encora.Providers
 
                 if (existingSeason != null)
                 {
-                    season.IndexNumber = EncoraSeasonIndexResolver.ResolveIndexNumber(_libraryManager, existingSeason.SeriesId, info.Path, season.PremiereDate, season.Name);
+                    season.IndexNumber = EncoraSeasonIndexResolver.ResolveIndexNumber(_libraryManager, existingSeason.SeriesId, existingSeason.Id, season.PremiereDate, season.Name);
                 }
 
                 var posterLocked = EncoraRecordingApplier.IsPosterLocked(existingSeason);
@@ -200,7 +202,7 @@ namespace Jellyfin.Plugin.Encora.Providers
                 var existingSeason = _libraryManager.FindByPath(info.Path, isFolder: true) as Season;
                 if (existingSeason != null)
                 {
-                    season.IndexNumber = EncoraSeasonIndexResolver.ResolveIndexNumber(_libraryManager, existingSeason.SeriesId, info.Path, season.PremiereDate, season.Name);
+                    season.IndexNumber = EncoraSeasonIndexResolver.ResolveIndexNumber(_libraryManager, existingSeason.SeriesId, existingSeason.Id, season.PremiereDate, season.Name);
                 }
 
                 _logger.LogInformation("[Encora] ✅ Using tour override '{Tour}' for non-Encora season folder: {Path}", tour, info.Path);

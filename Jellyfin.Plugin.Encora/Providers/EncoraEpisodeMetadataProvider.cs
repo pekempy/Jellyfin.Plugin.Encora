@@ -140,6 +140,9 @@ namespace Jellyfin.Plugin.Encora.Providers
                 {
                     EncoraCastMember.MapCastToResult(result, recording.Cast, headshots, recording.Master, options.AddMasterDirector);
                 }
+
+                var seasonTitleFormat = Plugin.Instance?.Configuration?.TvSeasonTitleFormat ?? "{tour}";
+                await EncoraSeasonPatcher.PatchParentSeasonAsync(_libraryManager, _logger, info.Path, recording, seasonTitleFormat, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
