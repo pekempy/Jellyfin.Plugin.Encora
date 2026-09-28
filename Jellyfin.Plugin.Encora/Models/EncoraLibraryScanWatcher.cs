@@ -9,8 +9,9 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.Encora.Models
 {
     /// <summary>
-    /// Watches for Jellyfin's library scan task to finish and, when it does, runs Encora's duplicate-season
-    /// cleanup as a "second pass" (see <see cref="EncoraSeasonDuplicateCleaner"/>).
+    /// Watches for Jellyfin's library scan task to finish and, when it does, runs Encora's duplicate-
+    /// season cleanup (see <see cref="EncoraSeasonDuplicateCleaner"/>) followed by the same-tour Season
+    /// merge (see <see cref="EncoraSeasonMerger"/>) as a "second pass".
     /// </summary>
     public class EncoraLibraryScanWatcher : IHostedService
     {
@@ -57,7 +58,7 @@ namespace Jellyfin.Plugin.Encora.Models
                 return;
             }
 
-            _logger.LogInformation("[Encora] 🔍 Library scan finished, running duplicate-season second pass");
+            _logger.LogInformation("[Encora] 🔍 Library scan finished, running season second passes");
 
             try
             {
@@ -66,6 +67,15 @@ namespace Jellyfin.Plugin.Encora.Models
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "[Encora] Error running post-scan duplicate season cleanup");
+            }
+
+            try
+            {
+                await EncoraSeasonMerger.RunAsync(_libraryManager, _logger, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Encora] Error running post-scan season merge");
             }
         }
     }
