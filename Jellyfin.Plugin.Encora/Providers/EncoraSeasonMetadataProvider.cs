@@ -23,7 +23,7 @@ namespace Jellyfin.Plugin.Encora.Providers
     /// (e.g. "Broadway", "West End"); its name is bootstrapped from the first Encora-identifiable recording
     /// found under the season folder.
     /// </summary>
-    public class EncoraSeasonMetadataProvider : IRemoteMetadataProvider<Season, SeasonInfo>, IHasOrder, IMetadataProvider
+    public class EncoraSeasonMetadataProvider : IRemoteMetadataProvider<Season, SeasonInfo>, ICustomMetadataProvider<Season>, IHasOrder, IMetadataProvider
     {
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ILogger<EncoraSeasonMetadataProvider> _logger;
@@ -240,6 +240,32 @@ namespace Jellyfin.Plugin.Encora.Providers
                 if (existingSeason != null)
                 {
                     season.IndexNumber = EncoraSeasonIndexResolver.ResolveIndexNumber(_libraryManager, existingSeason.SeriesId, existingSeason.Id, season.PremiereDate, season.Name);
+
+                    if (!string.Equals(existingSeason.Name, tour, StringComparison.Ordinal))
+                    {
+                        existingSeason.Name = tour;
+                        existingSeason.IndexNumber = season.IndexNumber;
+                        var series = _libraryManager.GetItemById(existingSeason.SeriesId);
+                        if (series != null)
+                        {
+                            _ = Task.Run(
+                                async () =>
+                                {
+                                    try
+                                    {
+                                        await Task.Delay(1000).ConfigureAwait(false);
+                                        await _libraryManager.UpdateItemAsync(existingSeason, series, ItemUpdateType.MetadataEdit, CancellationToken.None).ConfigureAwait(false);
+                                        await EncoraSeasonMerger.MergeAsync(_libraryManager, _logger, existingSeason.SeriesId, tour, protectItemId: null, CancellationToken.None).ConfigureAwait(false);
+                                        _logger.LogInformation("[Encora] ✅ Updated and merged Season '{Tour}' in LibraryManager for {Path}", tour, info.Path);
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        _logger.LogWarning(ex, "[Encora] Failed to update Season in LibraryManager for {Path}", info.Path);
+                                    }
+                                },
+                                CancellationToken.None);
+                        }
+                    }
                 }
 
                 _logger.LogInformation("[Encora] ✅ Using tour override '{Tour}' for non-Encora season folder: {Path}", tour, info.Path);
@@ -268,6 +294,67 @@ namespace Jellyfin.Plugin.Encora.Providers
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Applies metadata directly to the Season item before it is saved by MetadataService.
+        /// </summary>
+        /// <param name="item">The season item being refreshed.</param>
+        /// <param name="options">The metadata refresh options.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A task returning the item update type.</returns>
+        public Task<ItemUpdateType> FetchAsync(Season item, MetadataRefreshOptions options, CancellationToken cancellationToken)
+        {
+            if (item == null || string.IsNullOrWhiteSpace(item.Path))
+            {
+                return Task.FromResult(ItemUpdateType.None);
+            }
+
+            if (Plugin.Instance?.Configuration?.EnableTvMatching != true)
+            {
+                return Task.FromResult(ItemUpdateType.None);
+            }
+
+            if (!EncoraLibraryScope.IsPathInScope(_libraryManager, item.Path, Plugin.Instance?.Configuration?.TvLibraryIds))
+            {
+                return Task.FromResult(ItemUpdateType.None);
+            }
+
+            var tour = EncoraTourMarker.ReadTour(_logger, item.Path);
+            if (string.IsNullOrWhiteSpace(tour))
+            {
+                var nfoResult = HandleNonEncoraSeason(new SeasonInfo { Path = item.Path });
+                if (nfoResult.HasMetadata && nfoResult.Item != null)
+                {
+                    tour = nfoResult.Item.Name;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(tour) && !string.Equals(item.Name, tour, StringComparison.Ordinal))
+            {
+                _logger.LogInformation("[Encora] [CustomProvider] Overriding Season Name from '{OldName}' to '{NewName}' for {Path}", item.Name, tour, item.Path);
+                item.Name = tour;
+                item.IndexNumber = EncoraSeasonIndexResolver.ResolveIndexNumber(_libraryManager, item.SeriesId, item.Id, item.PremiereDate, item.Name);
+
+                _ = Task.Run(
+                    async () =>
+                    {
+                        try
+                        {
+                            await Task.Delay(1500).ConfigureAwait(false);
+                            await EncoraSeasonMerger.MergeAsync(_libraryManager, _logger, item.SeriesId, tour, protectItemId: null, CancellationToken.None).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "[Encora] Failed in post-delay Season merge for {Path}", item.Path);
+                        }
+                    },
+                    CancellationToken.None);
+
+                return Task.FromResult(ItemUpdateType.MetadataEdit);
+            }
+
+            return Task.FromResult(ItemUpdateType.None);
         }
 
         /// <summary>

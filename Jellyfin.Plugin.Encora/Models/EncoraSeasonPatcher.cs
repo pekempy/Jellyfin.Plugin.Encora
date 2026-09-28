@@ -57,13 +57,6 @@ namespace Jellyfin.Plugin.Encora.Models
                 return;
             }
 
-            // Seasons backed by a real physical folder are handled by EncoraSeasonMetadataProvider
-            // scanning that folder directly - only pathless (flat) Seasons need patching from here.
-            if (!string.IsNullOrWhiteSpace(season.Path))
-            {
-                return;
-            }
-
             var newName = EncoraTitleFormatter.FormatTourTitle(seasonTitleFormat, recording);
             var newPremiereDate = DateTime.TryParse(recording.Date?.FullDate, out var date) ? date : (DateTime?)null;
 
@@ -106,11 +99,13 @@ namespace Jellyfin.Plugin.Encora.Models
 
             await libraryManager.UpdateItemAsync(season, series, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
             logger.LogInformation(
-                "[Encora] ✅ Patched pathless Season '{Name}' (S{Index}) for Series {SeriesId} from Episode {EpisodePath}",
+                "[Encora] ✅ Patched Season '{Name}' (S{Index}) for Series {SeriesId} from Episode {EpisodePath}",
                 newName,
                 newIndexNumber,
                 episode.SeriesId,
                 episodePath);
+
+            await EncoraSeasonMerger.MergeAsync(libraryManager, logger, episode.SeriesId, newName, protectItemId: null, cancellationToken).ConfigureAwait(false);
         }
     }
 }
