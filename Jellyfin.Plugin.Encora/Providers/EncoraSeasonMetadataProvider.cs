@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Net.Http;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using Jellyfin.Plugin.Encora.Models;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
@@ -195,6 +197,41 @@ namespace Jellyfin.Plugin.Encora.Providers
             var result = new MetadataResult<Season>();
 
             var tour = EncoraTourMarker.ReadTour(_logger, info.Path);
+            if (string.IsNullOrWhiteSpace(tour) && !string.IsNullOrWhiteSpace(info.Path) && Directory.Exists(info.Path))
+            {
+                try
+                {
+                    var nfoFiles = Directory.EnumerateFiles(info.Path, "*.nfo", SearchOption.AllDirectories);
+                    foreach (var nfoFile in nfoFiles)
+                    {
+                        var nfoContent = File.ReadAllText(nfoFile);
+                        var sanitizedXml = Regex.Replace(nfoContent, @"&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-fA-F]+;)", "&amp;");
+                        var doc = XDocument.Parse(sanitizedXml);
+                        var tagline = doc.Root?.Element("tagline")?.Value;
+                        if (!string.IsNullOrWhiteSpace(tagline))
+                        {
+                            tour = tagline.Trim();
+                            break;
+                        }
+
+                        var title = doc.Root?.Element("title")?.Value;
+                        if (!string.IsNullOrWhiteSpace(title))
+                        {
+                            var tourMatch = Regex.Match(title, @"\(([^-\)]+?)(?:\s*-\s*[^)]*)?\)");
+                            if (tourMatch.Success)
+                            {
+                                tour = tourMatch.Groups[1].Value.Trim();
+                                break;
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Encora] [NFO] Error reading NFO tour candidate from {Path}", info.Path);
+                }
+            }
+
             if (!string.IsNullOrWhiteSpace(tour))
             {
                 var season = new Season { Name = tour };

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
@@ -47,37 +48,43 @@ namespace Jellyfin.Plugin.Encora.Models
             var config = Plugin.Instance?.Configuration;
             var addedPeople = new List<PersonInfo>();
 
-            foreach (var castMember in cast)
-            {
-                var performerName = castMember.Performer?.Name;
-                var characterName = castMember.Character?.Name;
-                var performerId = castMember.Performer?.Id;
-
-                string? performerIdString = performerId?.ToString(CultureInfo.InvariantCulture);
-                performerIdString = string.IsNullOrWhiteSpace(performerIdString) ? performerName : performerIdString;
-
-                if (!string.IsNullOrWhiteSpace(performerName))
+            // Group cast by performer to combine multiple roles
+            var groupedCast = cast
+                .Where(c => !string.IsNullOrWhiteSpace(c.Performer?.Name))
+                .GroupBy(c => c.Performer!.Id > 0 ? c.Performer.Id.GetHashCode() : c.Performer.Name!.GetHashCode(StringComparison.OrdinalIgnoreCase))
+                .Select(group => new
                 {
-                    string? role = characterName;
-                    if (castMember.Status?.Abbreviation is { Length: > 0 })
+                    PerformerName = group.First().Performer!.Name,
+                    PerformerId = group.First().Performer!.Id,
+                    Roles = group.Select(c =>
                     {
-                        role = $"{castMember.Status.Abbreviation} {characterName}";
-                    }
+                        var characterName = c.Character?.Name;
+                        if (c.Status?.Abbreviation is { Length: > 0 })
+                        {
+                            return $"{c.Status.Abbreviation} {characterName}";
+                        }
 
-                    var personInfo = new PersonInfo
-                    {
-                        Type = PersonKind.Actor,
-                        Name = performerName,
-                        Role = role
-                    };
+                        return characterName;
+                    }).Where(r => !string.IsNullOrWhiteSpace(r))
+                });
 
-                    if (performerId > 0 && headshots != null && headshots.Any(h => h.Id == performerId))
-                    {
-                        personInfo.ImageUrl = headshots.FirstOrDefault(h => h.Id == performerId)?.Url;
-                    }
+            foreach (var performer in groupedCast)
+            {
+                var combinedRole = string.Join(" / ", performer.Roles);
 
-                    addedPeople.Add(personInfo);
+                var personInfo = new PersonInfo
+                {
+                    Type = PersonKind.Actor,
+                    Name = performer.PerformerName!,
+                    Role = !string.IsNullOrWhiteSpace(combinedRole) ? combinedRole : null
+                };
+
+                if (performer.PerformerId > 0 && headshots != null && headshots.Any(h => h.Id == performer.PerformerId))
+                {
+                    personInfo.ImageUrl = headshots.FirstOrDefault(h => h.Id == performer.PerformerId)?.Url;
                 }
+
+                addedPeople.Add(personInfo);
             }
 
             // Add Master as Director if enabled

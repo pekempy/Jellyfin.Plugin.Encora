@@ -68,7 +68,7 @@ namespace Jellyfin.Plugin.Encora.Models
             var newPremiereDate = DateTime.TryParse(recording.Date?.FullDate, out var date) ? date : (DateTime?)null;
 
             var changed = false;
-            if (!string.Equals(season.Name, newName, StringComparison.Ordinal))
+            if (!string.IsNullOrWhiteSpace(newName) && !string.Equals(season.Name, newName, StringComparison.Ordinal))
             {
                 season.Name = newName;
                 changed = true;

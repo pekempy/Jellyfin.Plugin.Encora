@@ -1,15 +1,21 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml.Linq;
+using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.Encora.Models;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.Entities;
 using MediaBrowser.Model.Providers;
 using Microsoft.Extensions.Logging;
 
@@ -19,12 +25,13 @@ namespace Jellyfin.Plugin.Encora.Providers
     /// Provides Episode-level metadata for TV libraries from the Encora API. An Episode represents one
     /// specific dated recording, matched by the same Encora ID convention as Movie libraries.
     /// </summary>
-    public class EncoraEpisodeMetadataProvider : IRemoteMetadataProvider<Episode, EpisodeInfo>, IHasOrder, IMetadataProvider
+    public class EncoraEpisodeMetadataProvider : IRemoteMetadataProvider<Episode, EpisodeInfo>, ICustomMetadataProvider<Episode>, IHasOrder, IMetadataProvider
     {
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly ILogger<EncoraEpisodeMetadataProvider> _logger;
         private readonly IMediaEncoder _mediaEncoder;
         private readonly ILibraryManager _libraryManager;
+        private readonly ConcurrentDictionary<string, Episode> _pendingEpisodeUpdates = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Initializes a new instance of the <see cref="EncoraEpisodeMetadataProvider"/> class.
@@ -90,18 +97,18 @@ namespace Jellyfin.Plugin.Encora.Providers
                 return result;
             }
 
-            var apiKey = Plugin.Instance?.Configuration?.EncoraAPIKey;
-            if (string.IsNullOrWhiteSpace(apiKey))
-            {
-                _logger.LogInformation("[Encora] ❌ No API key configured, skipping metadata fetch for {Path}", info.Path);
-                return result;
-            }
-
             var encoraId = EncoraIdExtractor.ExtractEncoraId(_logger, info.Path);
             if (string.IsNullOrWhiteSpace(encoraId))
             {
-                _logger.LogInformation("[Encora] ❌ No Encora ID found in path: {Path}", info.Path);
-                return result;
+                _logger.LogInformation("[Encora] ❌ No Encora ID found in path: {Path}, checking for NFO metadata...", info.Path);
+                return await ParseNfoMetadata(info, cancellationToken).ConfigureAwait(false);
+            }
+
+            var apiKey = Plugin.Instance?.Configuration?.EncoraAPIKey;
+            if (string.IsNullOrWhiteSpace(apiKey))
+            {
+                _logger.LogInformation("[Encora] ❌ No API key configured, falling back to NFO metadata for {Path}", info.Path);
+                return await ParseNfoMetadata(info, cancellationToken).ConfigureAwait(false);
             }
 
             var episodeDir = Path.GetDirectoryName(info.Path);
@@ -113,8 +120,8 @@ namespace Jellyfin.Plugin.Encora.Providers
 
                 if (recording == null)
                 {
-                    _logger.LogInformation("[Encora] ❌ Failed to fetch metadata from Encora for ID {EncoraId} for {Path}", encoraId, info.Path);
-                    return result;
+                    _logger.LogInformation("[Encora] ❌ Failed to fetch metadata from Encora for ID {EncoraId} for {Path} - Falling back to NFO metadata", encoraId, info.Path);
+                    return await ParseNfoMetadata(info, cancellationToken).ConfigureAwait(false);
                 }
 
                 _logger.LogInformation("[Encora] ✅ Successfully fetched metadata from Encora for ID {EncoraId}", encoraId);
@@ -133,6 +140,7 @@ namespace Jellyfin.Plugin.Encora.Providers
                 EncoraRecordingApplier.ApplyRecordingFields(episode, _libraryManager, info.Path, recording, encoraId, options, _logger);
                 EncoraRecordingApplier.ApplyNftRating(episode, recording.Nft, options.IncludeNftTag);
 
+                _pendingEpisodeUpdates[info.Path] = episode;
                 result.HasMetadata = true;
                 result.Item = episode;
 
@@ -146,8 +154,8 @@ namespace Jellyfin.Plugin.Encora.Providers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[Encora] Error while fetching episode metadata from Encora for ID {EncoraId} for {Path}", encoraId, info.Path);
-                return result;
+                _logger.LogError(ex, "[Encora] Error while fetching episode metadata from Encora for ID {EncoraId} for {Path} - Falling back to NFO metadata", encoraId, info.Path);
+                return await ParseNfoMetadata(info, cancellationToken).ConfigureAwait(false);
             }
 
             if (options.GenerateThumbnail)
@@ -223,6 +231,484 @@ namespace Jellyfin.Plugin.Encora.Providers
             };
 
             return EncoraTitleFormatter.Format(format, variables);
+        }
+
+        /// <summary>
+        /// Fetches data from an NFO file (and folder/file naming) as a fallback for non-Encora or unindexed items.
+        /// </summary>
+        /// <param name="info">The episode info.</param>
+        /// <param name="cancellationToken">A cancellation token for the await.</param>
+        /// <returns>A metadata result.</returns>
+        private async Task<MetadataResult<Episode>> ParseNfoMetadata(EpisodeInfo info, CancellationToken cancellationToken)
+        {
+            _logger.LogInformation("[Encora] [NFO] Processing episode NFO metadata for {Path}", info.Path);
+            var result = new MetadataResult<Episode>();
+
+            var episodeDir = Path.GetDirectoryName(info.Path);
+            if (string.IsNullOrWhiteSpace(episodeDir))
+            {
+                return result;
+            }
+
+            var options = BuildOptions();
+
+            if (options.GenerateThumbnail)
+            {
+                await ThumbGenerator.GenerateThumbPng(_logger, _mediaEncoder, episodeDir, info.Path, options.ThumbnailSeekMinPercent, options.ThumbnailSeekMaxPercent).ConfigureAwait(false);
+            }
+
+            string? nfoPath = Path.ChangeExtension(info.Path, ".nfo");
+            if (!File.Exists(nfoPath))
+            {
+                var fileNameNoExt = Path.GetFileNameWithoutExtension(info.Path);
+                nfoPath = Path.Combine(episodeDir, fileNameNoExt + ".nfo");
+            }
+
+            if (!File.Exists(nfoPath))
+            {
+                nfoPath = Path.Combine(episodeDir, "movie.nfo");
+            }
+
+            if (!File.Exists(nfoPath))
+            {
+                try
+                {
+                    nfoPath = Directory.EnumerateFiles(episodeDir, "*.nfo").FirstOrDefault();
+                }
+                catch
+                {
+                    nfoPath = null;
+                }
+            }
+
+            XElement? root = null;
+            if (!string.IsNullOrWhiteSpace(nfoPath) && File.Exists(nfoPath))
+            {
+                try
+                {
+                    var nfoContent = await File.ReadAllTextAsync(nfoPath, cancellationToken).ConfigureAwait(false);
+                    var sanitizedXml = Regex.Replace(nfoContent, @"&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-fA-F]+;)", "&amp;");
+                    var doc = XDocument.Parse(sanitizedXml);
+                    root = doc.Root;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[Encora] [NFO] Failed to parse NFO XML at {NfoPath}", nfoPath);
+                }
+            }
+            else
+            {
+                _logger.LogInformation("[Encora] [NFO] No NFO file found in {EpisodeDir}, using path-based metadata", episodeDir);
+            }
+
+            EncoraDate? encoraDate = null;
+
+            // Try extracting date from path (e.g. "[2025-12-xx] Hadestown ~ The Riddle {ne}" or "[2021-06-04]")
+            // Supports [YYYY-MM-DD], [YYYY-MM-xx], [YYYY_MM_DD], [YYYY-xx-xx], optional variant (1)
+            var dateMatch = Regex.Match(info.Path, @"\[([0-9]{4})[-_]([0-9xX]{2})[-_]([0-9xX]{2})(?:\s*\(([^)]+)\))?\]");
+            if (dateMatch.Success)
+            {
+                var year = dateMatch.Groups[1].Value;
+                var monthStr = dateMatch.Groups[2].Value;
+                var dayStr = dateMatch.Groups[3].Value;
+                var variantStr = dateMatch.Groups[4].Success ? dateMatch.Groups[4].Value : null;
+
+                var monthKnown = !monthStr.Equals("xx", StringComparison.OrdinalIgnoreCase);
+                var dayKnown = !dayStr.Equals("xx", StringComparison.OrdinalIgnoreCase);
+
+                encoraDate = new EncoraDate
+                {
+                    FullDate = $"{year}-{(monthKnown ? monthStr : "00")}-{(dayKnown ? dayStr : "00")}",
+                    MonthKnown = monthKnown,
+                    DayKnown = dayKnown,
+                    DateVariant = variantStr
+                };
+            }
+            else if (root != null)
+            {
+                var premiered = root.Element("premiered")?.Value ?? root.Element("releasedate")?.Value;
+                if (!string.IsNullOrWhiteSpace(premiered))
+                {
+                    var parts = premiered.Split('-');
+                    if (parts.Length > 0 && int.TryParse(parts[0], out _))
+                    {
+                        var mKnown = parts.Length > 1 && !parts[1].Equals("00", StringComparison.Ordinal) && !parts[1].Equals("xx", StringComparison.OrdinalIgnoreCase);
+                        var dKnown = parts.Length > 2 && !parts[2].Equals("00", StringComparison.Ordinal) && !parts[2].Equals("xx", StringComparison.OrdinalIgnoreCase);
+                        encoraDate = new EncoraDate
+                        {
+                            FullDate = $"{parts[0]}-{(mKnown ? parts[1] : "00")}-{(dKnown ? parts[2] : "00")}",
+                            MonthKnown = mKnown,
+                            DayKnown = dKnown
+                        };
+                    }
+                }
+                else if (int.TryParse(root.Element("year")?.Value, out var y))
+                {
+                    encoraDate = new EncoraDate
+                    {
+                        FullDate = $"{y}-00-00",
+                        MonthKnown = false,
+                        DayKnown = false
+                    };
+                }
+            }
+
+            if (encoraDate != null)
+            {
+                if (Regex.IsMatch(info.Path, @"\((?:m|matinee|matin[eé]e)\)", RegexOptions.IgnoreCase))
+                {
+                    encoraDate.Time = "matinee";
+                }
+                else if (Regex.IsMatch(info.Path, @"\((?:e|evening)\)", RegexOptions.IgnoreCase))
+                {
+                    encoraDate.Time = "evening";
+                }
+            }
+
+            string? master = null;
+            if (root != null)
+            {
+                master = root.Element("director")?.Value;
+            }
+
+            if (string.IsNullOrWhiteSpace(master))
+            {
+                var masterMatch = Regex.Match(info.Path, @"~\s*([^{}\(\)\[\]]+?)(?:\s*[\{\(\[]|$)");
+                if (masterMatch.Success)
+                {
+                    master = masterMatch.Groups[1].Value.Trim();
+                }
+            }
+
+            string? tour = null;
+            if (root != null)
+            {
+                tour = root.Element("tagline")?.Value;
+                if (string.IsNullOrWhiteSpace(tour))
+                {
+                    var titleVal = root.Element("title")?.Value;
+                    if (!string.IsNullOrWhiteSpace(titleVal))
+                    {
+                        var tourMatch = Regex.Match(titleVal, @"\(([^-\)]+?)(?:\s*-\s*[^)]*)?\)");
+                        if (tourMatch.Success)
+                        {
+                            tour = tourMatch.Groups[1].Value.Trim();
+                        }
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(tour))
+            {
+                tour = EncoraTourMarker.ReadTour(_logger, episodeDir);
+            }
+
+            var parentDir = Path.GetDirectoryName(episodeDir);
+            if (string.IsNullOrWhiteSpace(tour) && !string.IsNullOrWhiteSpace(parentDir))
+            {
+                tour = EncoraTourMarker.ReadTour(_logger, parentDir);
+            }
+
+            string? show = null;
+            if (_libraryManager.FindByPath(info.Path, isFolder: false) is Episode existingEp && existingEp.SeriesId != Guid.Empty)
+            {
+                show = _libraryManager.GetItemById(existingEp.SeriesId)?.Name;
+            }
+
+            if (string.IsNullOrWhiteSpace(show) && root != null)
+            {
+                var titleVal = root.Element("title")?.Value;
+                if (!string.IsNullOrWhiteSpace(titleVal))
+                {
+                    var parenIdx = titleVal.IndexOf('(', StringComparison.Ordinal);
+                    show = parenIdx > 0 ? titleVal.Substring(0, parenIdx).Trim() : titleVal.Trim();
+                }
+            }
+
+            var plot = root?.Element("plot")?.Value;
+            var venue = root?.Element("studio")?.Value;
+
+            var recording = new EncoraRecording
+            {
+                Date = encoraDate,
+                Master = master,
+                Show = show,
+                Tour = tour,
+                Notes = plot,
+                Metadata = new EncoraMetadata
+                {
+                    Venue = venue,
+                    ShowDescription = plot
+                }
+            };
+
+            var titleFormat = Plugin.Instance?.Configuration?.TvEpisodeTitleFormat ?? "{date}";
+            var episodeTitle = FormatEpisodeTitle(titleFormat, recording, info.Path);
+            if (string.IsNullOrWhiteSpace(episodeTitle) || episodeTitle.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
+            {
+                episodeTitle = root?.Element("title")?.Value ?? Path.GetFileNameWithoutExtension(info.Path);
+            }
+
+            var episode = new Episode
+            {
+                Name = episodeTitle,
+                IndexNumber = EncoraDateHelper.ComputeDateIndexNumber(encoraDate, info.Path),
+                ForcedSortName = EncoraDateHelper.BuildDateSortKey(encoraDate, info.Path),
+            };
+
+            if (DateTime.TryParse(encoraDate?.FullDate, out var dt))
+            {
+                episode.PremiereDate = dt;
+                episode.ProductionYear = dt.Year;
+            }
+            else if (root != null && DateTime.TryParse(root.Element("premiered")?.Value, out var pDt))
+            {
+                episode.PremiereDate = pDt;
+                episode.ProductionYear = pDt.Year;
+            }
+            else if (root != null && int.TryParse(root.Element("year")?.Value, out var y))
+            {
+                episode.ProductionYear = y;
+            }
+
+            EncoraOverviewGuard.ApplyOverview(
+                episode,
+                _libraryManager,
+                info.Path,
+                isFolder: false,
+                !string.IsNullOrWhiteSpace(plot) ? plot : "No Notes",
+                options.PreserveManualDescriptionEdits,
+                _logger,
+                info.Path);
+
+            if (!string.IsNullOrWhiteSpace(venue))
+            {
+                episode.AddStudio(venue);
+            }
+
+            if (root != null)
+            {
+                foreach (var genreElem in root.Elements("genre"))
+                {
+                    if (!string.IsNullOrWhiteSpace(genreElem.Value))
+                    {
+                        episode.AddGenre(genreElem.Value);
+                    }
+                }
+
+                foreach (var certElem in root.Elements("certification"))
+                {
+                    if (!string.IsNullOrWhiteSpace(certElem.Value))
+                    {
+                        episode.OfficialRating = "NFT";
+                    }
+                }
+            }
+
+            if (Regex.IsMatch(info.Path, @"{nftf?}", RegexOptions.IgnoreCase))
+            {
+                episode.OfficialRating = "NFT";
+            }
+
+            if (!string.IsNullOrWhiteSpace(master) && options.TaglineSource == "master")
+            {
+                episode.Tagline = master;
+            }
+
+            if (root != null)
+            {
+                foreach (var actorElem in root.Elements("actor"))
+                {
+                    var name = actorElem.Element("name")?.Value;
+                    if (!string.IsNullOrWhiteSpace(name))
+                    {
+                        result.AddPerson(new PersonInfo
+                        {
+                            Name = name,
+                            Role = actorElem.Element("role")?.Value,
+                            ImageUrl = actorElem.Element("thumb")?.Value,
+                            Type = PersonKind.Actor
+                        });
+                    }
+                }
+            }
+
+            if (options.AddMasterDirector && !string.IsNullOrWhiteSpace(master))
+            {
+                result.AddPerson(new PersonInfo
+                {
+                    Name = master,
+                    Type = PersonKind.Director
+                });
+            }
+
+            if (!string.IsNullOrWhiteSpace(tour))
+            {
+                var seasonTitleFormat = Plugin.Instance?.Configuration?.TvSeasonTitleFormat ?? "{tour}";
+                await EncoraSeasonPatcher.PatchParentSeasonAsync(_libraryManager, _logger, info.Path, recording, seasonTitleFormat, cancellationToken).ConfigureAwait(false);
+            }
+
+            _pendingEpisodeUpdates[info.Path] = episode;
+
+            _ = Task.Run(
+                async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(1500).ConfigureAwait(false);
+                        if (_libraryManager.FindByPath(info.Path, isFolder: false) is Episode existingEpisode)
+                        {
+                            var changed = false;
+                            if (!string.Equals(existingEpisode.Name, episode.Name, StringComparison.Ordinal))
+                            {
+                                existingEpisode.Name = episode.Name;
+                                changed = true;
+                            }
+
+                            if (existingEpisode.IndexNumber != episode.IndexNumber)
+                            {
+                                existingEpisode.IndexNumber = episode.IndexNumber;
+                                changed = true;
+                            }
+
+                            if (!string.Equals(existingEpisode.ForcedSortName, episode.ForcedSortName, StringComparison.Ordinal))
+                            {
+                                existingEpisode.ForcedSortName = episode.ForcedSortName;
+                                changed = true;
+                            }
+
+                            if (episode.PremiereDate.HasValue && existingEpisode.PremiereDate != episode.PremiereDate)
+                            {
+                                existingEpisode.PremiereDate = episode.PremiereDate;
+                                changed = true;
+                            }
+
+                            if (episode.ProductionYear.HasValue && episode.ProductionYear > 0 && existingEpisode.ProductionYear != episode.ProductionYear)
+                            {
+                                existingEpisode.ProductionYear = episode.ProductionYear;
+                                changed = true;
+                            }
+
+                            if (changed)
+                            {
+                                var parent = existingEpisode.SeasonId != Guid.Empty
+                                    ? _libraryManager.GetItemById(existingEpisode.SeasonId)
+                                    : (existingEpisode.SeriesId != Guid.Empty ? _libraryManager.GetItemById(existingEpisode.SeriesId) : null);
+
+                                if (parent != null)
+                                {
+                                    await _libraryManager.UpdateItemAsync(existingEpisode, parent, ItemUpdateType.MetadataEdit, CancellationToken.None).ConfigureAwait(false);
+                                    _logger.LogInformation("[Encora] [NFO] ✅ Post-delay confirmed Episode in LibraryManager: Name='{Name}', IndexNumber={IndexNumber}", existingEpisode.Name, existingEpisode.IndexNumber);
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "[Encora] [NFO] Error in post-delay Episode update for {Path}", info.Path);
+                    }
+                },
+                CancellationToken.None);
+
+            result.Item = episode;
+            result.HasMetadata = true;
+            _logger.LogInformation("[Encora] [NFO] ✅ Successfully processed NFO metadata for episode {Path}: Name='{Name}', IndexNumber={IndexNumber}", info.Path, episode.Name, episode.IndexNumber);
+            return result;
+        }
+
+        /// <summary>
+        /// Applies metadata directly to the Episode item before it is saved by MetadataService.
+        /// </summary>
+        /// <param name="item">The episode item being refreshed.</param>
+        /// <param name="options">The metadata refresh options.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A task returning the item update type.</returns>
+        public async Task<ItemUpdateType> FetchAsync(Episode item, MetadataRefreshOptions options, CancellationToken cancellationToken)
+        {
+            if (item == null || string.IsNullOrWhiteSpace(item.Path))
+            {
+                return ItemUpdateType.None;
+            }
+
+            if (Plugin.Instance?.Configuration?.EnableTvMatching != true)
+            {
+                return ItemUpdateType.None;
+            }
+
+            if (!EncoraLibraryScope.IsPathInScope(_libraryManager, item.Path, Plugin.Instance?.Configuration?.TvLibraryIds))
+            {
+                return ItemUpdateType.None;
+            }
+
+            var updateType = ItemUpdateType.None;
+
+            if (_pendingEpisodeUpdates.TryRemove(item.Path, out var pending))
+            {
+                if (!string.IsNullOrWhiteSpace(pending.Name) && !string.Equals(item.Name, pending.Name, StringComparison.Ordinal))
+                {
+                    _logger.LogInformation("[Encora] [CustomProvider] Overriding Episode Name from '{OldName}' to '{NewName}' for {Path}", item.Name, pending.Name, item.Path);
+                    item.Name = pending.Name;
+                    updateType |= ItemUpdateType.MetadataEdit;
+                }
+
+                if (pending.IndexNumber.HasValue && item.IndexNumber != pending.IndexNumber)
+                {
+                    _logger.LogInformation("[Encora] [CustomProvider] Overriding Episode IndexNumber from {OldIndex} to {NewIndex} for {Path}", item.IndexNumber, pending.IndexNumber, item.Path);
+                    item.IndexNumber = pending.IndexNumber;
+                    updateType |= ItemUpdateType.MetadataEdit;
+                }
+
+                if (!string.IsNullOrWhiteSpace(pending.ForcedSortName) && !string.Equals(item.ForcedSortName, pending.ForcedSortName, StringComparison.Ordinal))
+                {
+                    item.ForcedSortName = pending.ForcedSortName;
+                    updateType |= ItemUpdateType.MetadataEdit;
+                }
+
+                if (pending.PremiereDate.HasValue && item.PremiereDate != pending.PremiereDate)
+                {
+                    item.PremiereDate = pending.PremiereDate;
+                    updateType |= ItemUpdateType.MetadataEdit;
+                }
+
+                if (pending.ProductionYear.HasValue && pending.ProductionYear > 0 && item.ProductionYear != pending.ProductionYear)
+                {
+                    item.ProductionYear = pending.ProductionYear;
+                    updateType |= ItemUpdateType.MetadataEdit;
+                }
+
+                return updateType;
+            }
+
+            // Fallback: if GetMetadata wasn't called for this item in this pass, check if it's a non-encora item
+            var encoraId = EncoraIdExtractor.ExtractEncoraId(_logger, item.Path);
+            if (string.IsNullOrWhiteSpace(encoraId) && (item.Path.Contains("{ne", StringComparison.OrdinalIgnoreCase) || item.Path.Contains("!non-encora", StringComparison.OrdinalIgnoreCase)))
+            {
+                var nfoResult = await ParseNfoMetadata(new EpisodeInfo { Path = item.Path }, cancellationToken).ConfigureAwait(false);
+                if (nfoResult.HasMetadata && nfoResult.Item != null)
+                {
+                    if (!string.IsNullOrWhiteSpace(nfoResult.Item.Name) && !string.Equals(item.Name, nfoResult.Item.Name, StringComparison.Ordinal))
+                    {
+                        _logger.LogInformation("[Encora] [CustomProvider] Overriding Episode Name from '{OldName}' to '{NewName}' for {Path}", item.Name, nfoResult.Item.Name, item.Path);
+                        item.Name = nfoResult.Item.Name;
+                        updateType |= ItemUpdateType.MetadataEdit;
+                    }
+
+                    if (nfoResult.Item.IndexNumber.HasValue && item.IndexNumber != nfoResult.Item.IndexNumber)
+                    {
+                        _logger.LogInformation("[Encora] [CustomProvider] Overriding Episode IndexNumber from {OldIndex} to {NewIndex} for {Path}", item.IndexNumber, nfoResult.Item.IndexNumber, item.Path);
+                        item.IndexNumber = nfoResult.Item.IndexNumber;
+                        updateType |= ItemUpdateType.MetadataEdit;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(nfoResult.Item.ForcedSortName) && !string.Equals(item.ForcedSortName, nfoResult.Item.ForcedSortName, StringComparison.Ordinal))
+                    {
+                        item.ForcedSortName = nfoResult.Item.ForcedSortName;
+                        updateType |= ItemUpdateType.MetadataEdit;
+                    }
+                }
+            }
+
+            return updateType;
         }
     }
 }

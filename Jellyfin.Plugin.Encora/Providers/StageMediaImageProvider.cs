@@ -54,15 +54,17 @@ namespace Jellyfin.Plugin.Encora.Providers
         /// <inheritdoc />
         public async Task<IEnumerable<RemoteImageInfo>> GetImages(BaseItem item, CancellationToken cancellationToken)
         {
-            // Jellyfin calls this directly for its own image refresh/"replace images" flows, entirely
-            // independent of EncoraSeasonMetadataProvider/EncoraSeriesMetadataProvider/EncoraMovieMetadataProvider's
-            // own poster-lock bookkeeping. Without this guard, StageMedia stays in the offered-image pool
-            // forever and Jellyfin can re-apply it over a poster the user (or Encora) already resolved,
-            // including one set manually - so re-check the same lock/existing-image signal here too.
-            if (EncoraRecordingApplier.IsPosterLocked(item) || item.HasImage(ImageType.Primary, 0))
-            {
-                return Enumerable.Empty<RemoteImageInfo>();
-            }
+            // GetImages backs Jellyfin's manual "Identify -> search for images" flow as well as its own
+            // automatic per-library image-fetcher pipeline - there's no signal in this interface to tell
+            // those two callers apart. Refusing candidates here for a locked poster or an item that
+            // already has one would also refuse them for the manual flow, where "already has a poster" /
+            // "poster is locked" is exactly why an admin opened search in the first place. Automated
+            // silent overwrites are guarded separately and unconditionally in EncoraSeasonMetadataProvider
+            // / EncoraSeriesMetadataProvider / EncoraMovieMetadataProvider's own direct StageMedia fetch,
+            // which checks IsPosterLocked/HasImage before ever calling FetchStageMediaImagesAsync - that
+            // guard is untouched. This method should always return every real candidate.
+
+            _logger.LogInformation("[Encora] [StageMedia] GetImages called for {ItemType} '{ItemName}' ({ItemId})", item.GetType().Name, item.Name, item.Id);
 
             if (!item.ProviderIds.TryGetValue("StageMediaShowId", out var showId) || string.IsNullOrWhiteSpace(showId))
             {
@@ -83,27 +85,37 @@ namespace Jellyfin.Plugin.Encora.Providers
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", stageMediaApiKey);
             client.DefaultRequestHeaders.UserAgent.ParseAdd("JellyfinAgent/0.1");
 
-            var response = await client.GetAsync(url, cancellationToken).ConfigureAwait(false);
-            response.EnsureSuccessStatusCode();
-            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            var images = JsonSerializer.Deserialize<StageMediaImages>(json);
-
-            var remoteImages = new List<RemoteImageInfo>();
-
-            if (images?.Posters != null)
+            try
             {
-                foreach (var posterUrl in images.Posters.Where(p => !string.IsNullOrWhiteSpace(p)))
-                {
-                    remoteImages.Add(new RemoteImageInfo
-                    {
-                        ProviderName = Name,
-                        Url = posterUrl,
-                        Type = ImageType.Primary
-                    });
-                }
-            }
+                var response = await client.GetAsync(url, cancellationToken).ConfigureAwait(false);
+                _logger.LogInformation("[Encora] [StageMedia] {Url} -> HTTP {StatusCode}", url, (int)response.StatusCode);
+                response.EnsureSuccessStatusCode();
+                var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                var images = JsonSerializer.Deserialize<StageMediaImages>(json);
 
-            return remoteImages;
+                var remoteImages = new List<RemoteImageInfo>();
+
+                if (images?.Posters != null)
+                {
+                    foreach (var posterUrl in images.Posters.Where(p => !string.IsNullOrWhiteSpace(p)))
+                    {
+                        remoteImages.Add(new RemoteImageInfo
+                        {
+                            ProviderName = Name,
+                            Url = posterUrl,
+                            Type = ImageType.Primary
+                        });
+                    }
+                }
+
+                _logger.LogInformation("[Encora] [StageMedia] Returning {Count} candidate poster(s) for {ItemName}", remoteImages.Count, item.Name);
+                return remoteImages;
+            }
+            catch (System.Exception ex)
+            {
+                _logger.LogError(ex, "[Encora] [StageMedia] GetImages failed for {ItemName}", item.Name);
+                return Enumerable.Empty<RemoteImageInfo>();
+            }
         }
 
         /// <inheritdoc />
