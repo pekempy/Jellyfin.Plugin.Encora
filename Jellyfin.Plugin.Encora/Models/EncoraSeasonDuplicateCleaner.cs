@@ -16,9 +16,12 @@ namespace Jellyfin.Plugin.Encora.Models
     /// Cleans up duplicate Season records that Jellyfin's own scanner occasionally leaves behind for the
     /// same tour - observed when concurrent episode processing during a library scan races and resolves
     /// the same on-disk season folder to two separate Season rows (one left with a stale, partial episode
-    /// count). Acts as a "second pass": for every Series, Seasons sharing the same name are collapsed down
-    /// to the one with the most episodes. Only database records are touched - files on disk are never
-    /// deleted, so a later scan will cleanly re-attach anything real.
+    /// count). Acts as a "second pass": for every Series, Seasons sharing the same name AND the same
+    /// on-disk Path (or no Path at all - an orphaned scan artifact) are collapsed down to the one with
+    /// the most episodes. Seasons sharing a name but backed by two genuinely different real folders (e.g.
+    /// two non-Encora recordings manually assigned the same tour via <see cref="EncoraTourMarker"/>) are
+    /// never touched. Only database records are touched - files on disk are never deleted, so a later
+    /// scan will cleanly re-attach anything real.
     /// </summary>
     public static class EncoraSeasonDuplicateCleaner
     {
@@ -57,6 +60,21 @@ namespace Jellyfin.Plugin.Encora.Models
 
                 var duplicates = group.ToList();
                 if (duplicates.Count < 2)
+                {
+                    continue;
+                }
+
+                // More than one *distinct* real on-disk Path sharing this Name means these are
+                // legitimately different folders (e.g. two non-Encora recordings manually assigned the
+                // same tour) - not a scanner race for the same folder. Leave those alone entirely; only
+                // rows with no Path at all (orphaned scan artifacts) or all sharing the one real Path are
+                // safe to collapse.
+                var distinctRealPaths = duplicates
+                    .Where(season => !string.IsNullOrWhiteSpace(season.Path))
+                    .Select(season => season.Path.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                if (distinctRealPaths.Count > 1)
                 {
                     continue;
                 }
