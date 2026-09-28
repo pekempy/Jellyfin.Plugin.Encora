@@ -9,6 +9,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "1.2.0.8",
+        "changelog": "See release notes",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/1.2.0.8/encora-plugin_1.2.0.8.zip",
+        "checksum": "38b442f09cb3a1f1d5fce39bc4689918",
+        "timestamp": "2026-09-28T14:19:06Z"
+      },
+      {
         "version": "1.2.0.7",
         "changelog": "## What's New\r\n\r\n* Hopefully fixes for poster overwriting and season order/naming",
         "targetAbi": "10.11.0.0",
