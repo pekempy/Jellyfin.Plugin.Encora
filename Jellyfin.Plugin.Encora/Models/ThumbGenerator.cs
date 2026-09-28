@@ -56,7 +56,10 @@ namespace Jellyfin.Plugin.Encora.Models
 
                             durationProcess.Start();
                             var stderr = await durationProcess.StandardError.ReadToEndAsync().ConfigureAwait(false);
-                            await durationProcess.WaitForExitAsync().ConfigureAwait(false);
+                            if (!await TryWaitForExitAsync(durationProcess, TimeSpan.FromSeconds(20)).ConfigureAwait(false))
+                            {
+                                logger.LogWarning("[Encora] [Thumb] ⚠️ Timed out probing video duration for {Path}, using fallback duration", mediaPath);
+                            }
 
                             var match = System.Text.RegularExpressions.Regex.Match(stderr, @"Duration: (\d+):(\d+):(\d+)\.(\d+)");
                             if (match.Success)
@@ -96,8 +99,11 @@ namespace Jellyfin.Plugin.Encora.Models
                         };
 
                         process.Start();
-                        var cancellationToken = default(CancellationToken);
-                        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+                        if (!await TryWaitForExitAsync(process, TimeSpan.FromSeconds(45)).ConfigureAwait(false))
+                        {
+                            logger.LogWarning("[Encora] [Thumb] ⚠️ FFmpeg timed out generating thumb.png for {Path}, skipping thumbnail", mediaPath);
+                            return;
+                        }
 
                         if (process.ExitCode == 0 && File.Exists(thumbPath))
                         {
@@ -113,6 +119,38 @@ namespace Jellyfin.Plugin.Encora.Models
                         logger.LogWarning(ex, "[Encora] [Thumb] ❌ Exception while generating thumb.png");
                     }
                 }
+            }
+        }
+
+        /// <summary>
+        /// Awaits process exit with a bounded timeout, killing the process tree if it hangs. FFmpeg has
+        /// been observed to hang indefinitely probing/seeking certain video files - without a timeout,
+        /// that hang blocks the calling metadata provider forever, silently discarding an otherwise fully
+        /// resolved Name/Overview/Cast result that was never returned.
+        /// </summary>
+        /// <param name="process">The started process to wait on.</param>
+        /// <param name="timeout">The maximum time to wait before killing the process.</param>
+        /// <returns><c>true</c> if the process exited within the timeout; <c>false</c> if it was killed.</returns>
+        private static async Task<bool> TryWaitForExitAsync(System.Diagnostics.Process process, TimeSpan timeout)
+        {
+            using var cts = new CancellationTokenSource(timeout);
+            try
+            {
+                await process.WaitForExitAsync(cts.Token).ConfigureAwait(false);
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch (InvalidOperationException)
+                {
+                    // Process already exited between the timeout firing and us trying to kill it.
+                }
+
+                return false;
             }
         }
     }
