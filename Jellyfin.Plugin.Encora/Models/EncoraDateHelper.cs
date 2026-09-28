@@ -127,13 +127,17 @@ namespace Jellyfin.Plugin.Encora.Models
         }
 
         /// <summary>
-        /// Computes a stable chronological-sort-order integer for a recording date, encoded as YYYYMMDD
-        /// with a trailing session/act digit. Jellyfin orders episodes within a season by <c>IndexNumber</c>
-        /// specifically (not by <c>ForcedSortName</c>), so Episodes need an actual numeric index to sort
-        /// chronologically. Seasons get their own chronological IndexNumber too (see
-        /// <see cref="EncoraSeasonIndexResolver"/>) rather than this YYYYMMDD scheme, since Jellyfin's
-        /// local folder-name scanner already assigns Seasons a raw digit and leaving IndexNumber unset
-        /// does not clear that pre-existing, often nonsensical, folder-derived number.
+        /// Computes a stable chronological-sort-order integer for a recording date, encoded so it reads
+        /// as the date itself: <c>YYYYMMDD</c> (day/month <c>00</c> if unknown) followed by a 2-digit
+        /// variant/Act suffix, e.g. <c>2026050100</c> for 2026-05-01, or <c>2026050010</c> for an unknown
+        /// day with variant "1". Jellyfin's <c>IndexNumber</c> is a plain <c>int</c> - there's no way to
+        /// show literal dashes in the episode-number badge - so this is the closest readable equivalent
+        /// that still fits Int32 and sorts correctly. Jellyfin orders episodes within a season by
+        /// <c>IndexNumber</c> specifically (not by <c>ForcedSortName</c>), so Episodes need an actual
+        /// numeric index to sort chronologically. Seasons get their own chronological IndexNumber too
+        /// (see <see cref="EncoraSeasonIndexResolver"/>) rather than this scheme, since Jellyfin's local
+        /// folder-name scanner already assigns Seasons a raw digit and leaving IndexNumber unset does not
+        /// clear that pre-existing, often nonsensical, folder-derived number.
         /// </summary>
         /// <param name="date">The recording date.</param>
         /// <param name="path">The file path, used to detect an "Act N" suffix.</param>
@@ -146,16 +150,20 @@ namespace Jellyfin.Plugin.Encora.Models
             }
 
             var parts = date.FullDate.Split('-');
-            if (parts.Length == 0 || !int.TryParse(parts[0], out var year))
+            if (parts.Length == 0 || !int.TryParse(parts[0], out var year) || year is < 0 or > 9999)
             {
                 return null;
             }
 
-            var month = (date.MonthKnown && parts.Length > 1 && int.TryParse(parts[1], out var m)) ? m : 1;
-            var day = (date.DayKnown && parts.Length > 2 && int.TryParse(parts[2], out var d)) ? d : 1;
+            var month = (date.MonthKnown && parts.Length > 1 && int.TryParse(parts[1], out var m)) ? Math.Clamp(m, 0, 99) : 0;
+            var day = (date.DayKnown && parts.Length > 2 && int.TryParse(parts[2], out var d)) ? Math.Clamp(d, 0, 99) : 0;
 
-            var sessionDigit = !string.IsNullOrWhiteSpace(date.Time) && date.Time.Equals("matinee", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
-            var variantDigit = Math.Clamp(ParseVariantDigit(date.DateVariant), 0, 9);
+            // Encora's own date_variant already disambiguates same-day recordings (matinee vs evening
+            // included), so a matinee showing just bumps the variant digit by one rather than needing its
+            // own digit slot - that's the only way a 2-digit suffix (the most Int32 has room for once
+            // YYYYMMDD is the visible base) can still fit both variant and Act.
+            var sessionBump = !string.IsNullOrWhiteSpace(date.Time) && date.Time.Equals("matinee", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+            var variantDigit = Math.Clamp(ParseVariantDigit(date.DateVariant) + sessionBump, 0, 9);
 
             var actDigit = 0;
             if (!string.IsNullOrWhiteSpace(path))
@@ -167,9 +175,12 @@ namespace Jellyfin.Plugin.Encora.Models
                 }
             }
 
+            // YYYYMMDD*100 (max ~2,026,123,100 for a 2026 date) stays comfortably under Int32.MaxValue
+            // (2,147,483,647) for any date up to roughly the 22nd century - the old YYYYMMDD*1000 scheme
+            // overflowed for every single date (e.g. 2022-05-01 silently wrapped to -1254335470).
             var yearMonthDay = (year * 10000) + (month * 100) + day;
-            var suffix = (sessionDigit * 100) + (variantDigit * 10) + actDigit;
-            return (yearMonthDay * 1000) + suffix;
+            var suffix = (variantDigit * 10) + actDigit;
+            return (yearMonthDay * 100) + suffix;
         }
 
         /// <summary>
