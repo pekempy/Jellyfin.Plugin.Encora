@@ -54,6 +54,16 @@ namespace Jellyfin.Plugin.Encora.Providers
         /// <inheritdoc />
         public async Task<IEnumerable<RemoteImageInfo>> GetImages(BaseItem item, CancellationToken cancellationToken)
         {
+            // Jellyfin calls this directly for its own image refresh/"replace images" flows, entirely
+            // independent of EncoraSeasonMetadataProvider/EncoraSeriesMetadataProvider/EncoraMovieMetadataProvider's
+            // own poster-lock bookkeeping. Without this guard, StageMedia stays in the offered-image pool
+            // forever and Jellyfin can re-apply it over a poster the user (or Encora) already resolved,
+            // including one set manually - so re-check the same lock/existing-image signal here too.
+            if (EncoraRecordingApplier.IsPosterLocked(item) || item.HasImage(ImageType.Primary, 0))
+            {
+                return Enumerable.Empty<RemoteImageInfo>();
+            }
+
             if (!item.ProviderIds.TryGetValue("StageMediaShowId", out var showId) || string.IsNullOrWhiteSpace(showId))
             {
                 _logger.LogError("[Encora] [StageMedia] {ItemName} does not have a valid StageMedia Show ID.", item.Name);
