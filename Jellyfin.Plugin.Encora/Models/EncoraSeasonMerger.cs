@@ -62,23 +62,46 @@ namespace Jellyfin.Plugin.Encora.Models
                 await MergeAsync(libraryManager, logger, group.Key.ParentId, group.Key.Name, protectItemId: null, cancellationToken).ConfigureAwait(false);
             }
 
-            // Second pass, independent of whether any merge above actually fired: re-stamp every
-            // Season's own children so their cached ParentIndexNumber matches. IndexNumber is a
-            // chronological rank among sibling Seasons (see EncoraSeasonIndexResolver) that can drift
-            // any time a sibling Season's own date/name changes or a new sibling appears - not just when
-            // Seasons get merged - and Jellyfin's own "episodes by season" API groups by this cached
-            // number, not by the real ParentId link. Confirmed live: found stale on ~30 Seasons across
-            // 15+ shows despite those Seasons never having had a duplicate-folder merge candidate at all.
+            // Second pass, independent of whether any merge above actually fired: recompute every
+            // Season's own IndexNumber against its CURRENT siblings, then re-stamp its children to
+            // match. IndexNumber is a chronological rank among sibling Seasons (see
+            // EncoraSeasonIndexResolver) resolved independently whenever any ONE Season happens to get
+            // refreshed - a Season not touched since an earlier refresh keeps its old rank even after a
+            // sibling's date/name change or a new sibling's arrival should have shifted it, so two
+            // different Seasons under the same Series can end up sharing the same IndexNumber. Confirmed
+            // live on Hadestown: Broadway and First US National Tour both stuck at IndexNumber 1, West
+            // End and Second US National Tour both stuck at 4 - Jellyfin's own "episodes by season" API
+            // groups by that shared number, so two unrelated Seasons' episode lists blend together.
+            // Recomputed here in one pass per Series (sorted the same way ResolveIndexNumber ranks a
+            // single Season) so every sibling ends up mutually consistent, not just self-consistent.
             var allSeasons = libraryManager.GetItemList(new InternalItemsQuery
             {
                 IncludeItemTypes = new[] { BaseItemKind.Season },
                 Recursive = true
-            }).OfType<Season>();
+            }).OfType<Season>().ToList();
 
-            foreach (var season in allSeasons)
+            foreach (var seriesGroup in allSeasons.GroupBy(season => season.SeriesId))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                await EncoraSeasonIndexResolver.SyncChildEpisodeIndexNumbersAsync(libraryManager, season, cancellationToken).ConfigureAwait(false);
+
+                var series = libraryManager.GetItemById(seriesGroup.Key);
+                var ordered = seriesGroup
+                    .OrderBy(season => season.PremiereDate ?? DateTime.MaxValue)
+                    .ThenBy(season => season.Name, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                for (var i = 0; i < ordered.Count; i++)
+                {
+                    var season = ordered[i];
+                    var newIndexNumber = i + 1;
+                    if (season.IndexNumber != newIndexNumber && series != null)
+                    {
+                        season.IndexNumber = newIndexNumber;
+                        await libraryManager.UpdateItemAsync(season, series, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    await EncoraSeasonIndexResolver.SyncChildEpisodeIndexNumbersAsync(libraryManager, season, cancellationToken).ConfigureAwait(false);
+                }
             }
         }
 
