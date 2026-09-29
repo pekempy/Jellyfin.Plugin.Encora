@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
@@ -54,18 +55,24 @@ namespace Jellyfin.Plugin.Encora.Providers
         /// <inheritdoc />
         public async Task<IEnumerable<RemoteImageInfo>> GetImages(BaseItem item, CancellationToken cancellationToken)
         {
+            var stack = Environment.StackTrace;
+            var isManualSearch = stack.Contains("RemoteImageController", StringComparison.OrdinalIgnoreCase);
+
             // Jellyfin calls IRemoteImageProvider.GetImages directly for its own automatic image refresh/fetch
             // flows (configured in LibraryOptions ImageFetchers). If this returns candidate posters when an item
             // already has a primary image, has a local poster file (e.g. folder.jpg), or has its poster locked,
             // Jellyfin's automatic fetcher downloads the first candidate into metadata cache and silently overwrites
-            // the user's custom poster! We must strictly guard against this and return nothing.
-            if (EncoraRecordingApplier.IsPosterLocked(item) ||
+            // the user's custom poster! We must strictly guard against this for automated flows, while still allowing
+            // the user to manually search for images in the "Edit Images" UI.
+            if (!isManualSearch && (EncoraRecordingApplier.IsPosterLocked(item) ||
                 item.HasImage(ImageType.Primary, 0) ||
-                EncoraRecordingApplier.HasLocalPosterFile(item.Path))
+                EncoraRecordingApplier.HasLocalPosterFile(item.Path)))
             {
-                _logger.LogInformation("[Encora] [StageMedia] Skipping GetImages for {ItemType} '{ItemName}' - poster is locked, already exists, or local poster file is present", item.GetType().Name, item.Name);
+                _logger.LogInformation("[Encora] [StageMedia] Skipping automated GetImages for {ItemType} '{ItemName}' - poster is locked, already exists, or local poster file is present", item.GetType().Name, item.Name);
                 return Enumerable.Empty<RemoteImageInfo>();
             }
+
+            _logger.LogInformation("[Encora] [StageMedia] GetImages called for {ItemType} '{ItemName}' (ManualSearch={IsManual})", item.GetType().Name, item.Name, isManualSearch);
 
             _logger.LogInformation("[Encora] [StageMedia] GetImages called for {ItemType} '{ItemName}' ({ItemId})", item.GetType().Name, item.Name, item.Id);
 
