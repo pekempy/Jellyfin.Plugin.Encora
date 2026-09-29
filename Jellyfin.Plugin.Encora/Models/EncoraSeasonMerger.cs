@@ -61,6 +61,25 @@ namespace Jellyfin.Plugin.Encora.Models
                 cancellationToken.ThrowIfCancellationRequested();
                 await MergeAsync(libraryManager, logger, group.Key.ParentId, group.Key.Name, protectItemId: null, cancellationToken).ConfigureAwait(false);
             }
+
+            // Second pass, independent of whether any merge above actually fired: re-stamp every
+            // Season's own children so their cached ParentIndexNumber matches. IndexNumber is a
+            // chronological rank among sibling Seasons (see EncoraSeasonIndexResolver) that can drift
+            // any time a sibling Season's own date/name changes or a new sibling appears - not just when
+            // Seasons get merged - and Jellyfin's own "episodes by season" API groups by this cached
+            // number, not by the real ParentId link. Confirmed live: found stale on ~30 Seasons across
+            // 15+ shows despite those Seasons never having had a duplicate-folder merge candidate at all.
+            var allSeasons = libraryManager.GetItemList(new InternalItemsQuery
+            {
+                IncludeItemTypes = new[] { BaseItemKind.Season },
+                Recursive = true
+            }).OfType<Season>();
+
+            foreach (var season in allSeasons)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await EncoraSeasonIndexResolver.SyncChildEpisodeIndexNumbersAsync(libraryManager, season, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         /// <summary>
@@ -183,21 +202,7 @@ namespace Jellyfin.Plugin.Encora.Models
                     await libraryManager.UpdateItemAsync(keeper, series, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
                 }
 
-                var allEpisodes = libraryManager.GetItemList(new InternalItemsQuery
-                {
-                    ParentId = keeper.Id,
-                    IncludeItemTypes = new[] { BaseItemKind.Episode },
-                    Recursive = true
-                }).OfType<Episode>().ToList();
-
-                foreach (var ep in allEpisodes)
-                {
-                    if (ep.ParentIndexNumber != keeper.IndexNumber)
-                    {
-                        ep.ParentIndexNumber = keeper.IndexNumber;
-                        await libraryManager.UpdateItemAsync(ep, keeper, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
-                    }
-                }
+                await EncoraSeasonIndexResolver.SyncChildEpisodeIndexNumbersAsync(libraryManager, keeper, cancellationToken).ConfigureAwait(false);
             }
         }
     }

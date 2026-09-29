@@ -84,6 +84,7 @@ namespace Jellyfin.Plugin.Encora.Models
             {
                 season.IndexNumber = newIndexNumber;
                 changed = true;
+                await EncoraSeasonIndexResolver.SyncChildEpisodeIndexNumbersAsync(libraryManager, season, cancellationToken).ConfigureAwait(false);
             }
 
             if (!changed)

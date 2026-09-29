@@ -159,6 +159,17 @@ namespace Jellyfin.Plugin.Encora.Providers
                 {
                     season.IndexNumber = EncoraSeasonIndexResolver.ResolveIndexNumber(_libraryManager, existingSeason.SeriesId, existingSeason.Id, season.PremiereDate, season.Name);
 
+                    if (existingSeason.IndexNumber != season.IndexNumber)
+                    {
+                        existingSeason.IndexNumber = season.IndexNumber;
+                        var seriesForIndex = _libraryManager.GetItemById(existingSeason.SeriesId);
+                        if (seriesForIndex != null)
+                        {
+                            await _libraryManager.UpdateItemAsync(existingSeason, seriesForIndex, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                            await EncoraSeasonIndexResolver.SyncChildEpisodeIndexNumbersAsync(_libraryManager, existingSeason, cancellationToken).ConfigureAwait(false);
+                        }
+                    }
+
                     // Confirmed by extensive live testing: Jellyfin ties Season identity to the physical
                     // recording folder one-to-one, so a multi-recording tour ends up as several same-named
                     // Seasons here (one per folder) on every refresh, not just the first time - merge them
@@ -252,7 +263,7 @@ namespace Jellyfin.Plugin.Encora.Providers
                 {
                     season.IndexNumber = EncoraSeasonIndexResolver.ResolveIndexNumber(_libraryManager, existingSeason.SeriesId, existingSeason.Id, season.PremiereDate, season.Name);
 
-                    if (!string.Equals(existingSeason.Name, tour, StringComparison.Ordinal))
+                    if (!string.Equals(existingSeason.Name, tour, StringComparison.Ordinal) || existingSeason.IndexNumber != season.IndexNumber)
                     {
                         existingSeason.Name = tour;
                         existingSeason.IndexNumber = season.IndexNumber;
@@ -266,6 +277,7 @@ namespace Jellyfin.Plugin.Encora.Providers
                                     {
                                         await Task.Delay(2000).ConfigureAwait(false);
                                         await _libraryManager.UpdateItemAsync(existingSeason, series, ItemUpdateType.MetadataEdit, CancellationToken.None).ConfigureAwait(false);
+                                        await EncoraSeasonIndexResolver.SyncChildEpisodeIndexNumbersAsync(_libraryManager, existingSeason, CancellationToken.None).ConfigureAwait(false);
                                         await EncoraSeasonMerger.MergeAsync(_libraryManager, _logger, existingSeason.SeriesId, tour, protectItemId: existingSeason.Id, CancellationToken.None).ConfigureAwait(false);
                                         _logger.LogInformation("[Encora] ✅ Updated and merged Season '{Tour}' in LibraryManager for {Path}", tour, info.Path);
                                     }
@@ -381,27 +393,40 @@ namespace Jellyfin.Plugin.Encora.Providers
                 updated = true;
             }
 
-            if (!string.IsNullOrWhiteSpace(tour) && !string.Equals(item.Name, tour, StringComparison.Ordinal))
+            if (!string.IsNullOrWhiteSpace(tour))
             {
-                _logger.LogInformation("[Encora] [CustomProvider] Overriding Season Name from '{OldName}' to '{NewName}' for {Path}", item.Name, tour, item.Path);
-                item.Name = tour;
-                item.IndexNumber = EncoraSeasonIndexResolver.ResolveIndexNumber(_libraryManager, item.SeriesId, item.Id, item.PremiereDate, item.Name);
-                updated = true;
+                var newIndexNumber = EncoraSeasonIndexResolver.ResolveIndexNumber(_libraryManager, item.SeriesId, item.Id, item.PremiereDate, tour);
+                var nameChanged = !string.Equals(item.Name, tour, StringComparison.Ordinal);
+                var indexChanged = item.IndexNumber != newIndexNumber;
 
-                _ = Task.Run(
-                    async () =>
+                if (nameChanged || indexChanged)
+                {
+                    if (nameChanged)
                     {
-                        try
+                        _logger.LogInformation("[Encora] [CustomProvider] Overriding Season Name from '{OldName}' to '{NewName}' for {Path}", item.Name, tour, item.Path);
+                        item.Name = tour;
+                    }
+
+                    item.IndexNumber = newIndexNumber;
+                    updated = true;
+
+                    await EncoraSeasonIndexResolver.SyncChildEpisodeIndexNumbersAsync(_libraryManager, item, cancellationToken).ConfigureAwait(false);
+
+                    _ = Task.Run(
+                        async () =>
                         {
-                            await Task.Delay(2000).ConfigureAwait(false);
-                            await EncoraSeasonMerger.MergeAsync(_libraryManager, _logger, item.SeriesId, tour, protectItemId: item.Id, CancellationToken.None).ConfigureAwait(false);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning(ex, "[Encora] Failed in post-delay Season merge for {Path}", item.Path);
-                        }
-                    },
-                    CancellationToken.None);
+                            try
+                            {
+                                await Task.Delay(2000).ConfigureAwait(false);
+                                await EncoraSeasonMerger.MergeAsync(_libraryManager, _logger, item.SeriesId, tour, protectItemId: item.Id, CancellationToken.None).ConfigureAwait(false);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "[Encora] Failed in post-delay Season merge for {Path}", item.Path);
+                            }
+                        },
+                        CancellationToken.None);
+                }
             }
 
             return updated ? ItemUpdateType.MetadataEdit : ItemUpdateType.None;

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
@@ -50,6 +52,44 @@ namespace Jellyfin.Plugin.Encora.Models
 
             var rank = siblingDates.FindIndex(x => x.Date == currentPremiereDate && string.Equals(x.Name, currentName ?? string.Empty, StringComparison.OrdinalIgnoreCase));
             return rank >= 0 ? rank + 1 : siblingDates.Count;
+        }
+
+        /// <summary>
+        /// Re-stamps every Episode directly under <paramref name="season"/> so its cached
+        /// <c>ParentIndexNumber</c> matches the Season's own current <c>IndexNumber</c>.
+        /// </summary>
+        /// <remarks>
+        /// Confirmed by live testing: Jellyfin's own "episodes by season" API groups by an Episode's
+        /// cached <c>ParentIndexNumber</c>, not by its real <c>SeasonId</c>/<c>ParentId</c> link. Every
+        /// caller of <see cref="ResolveIndexNumber"/> can change a Season's <c>IndexNumber</c> at any
+        /// time - not just during a merge - because it's a chronological rank among siblings that shifts
+        /// whenever any sibling Season's own date/name changes or a new sibling appears. Skipping this
+        /// sync after such a change leaves already-processed Episodes carrying a stale number, so they
+        /// silently get grouped under whichever OTHER Season currently holds that old number instead of
+        /// their own real parent - real user-visible symptom: a Season's episode list "borrows" episodes
+        /// that actually live under a totally different Season.
+        /// </remarks>
+        /// <param name="libraryManager">The library manager.</param>
+        /// <param name="season">The Season whose children should be re-synced.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>A task that represents the asynchronous operation.</returns>
+        public static async Task SyncChildEpisodeIndexNumbersAsync(ILibraryManager libraryManager, Season season, CancellationToken cancellationToken)
+        {
+            var episodes = libraryManager.GetItemList(new InternalItemsQuery
+            {
+                ParentId = season.Id,
+                IncludeItemTypes = new[] { BaseItemKind.Episode },
+                Recursive = true
+            }).OfType<Episode>();
+
+            foreach (var episode in episodes)
+            {
+                if (episode.ParentIndexNumber != season.IndexNumber)
+                {
+                    episode.ParentIndexNumber = season.IndexNumber;
+                    await libraryManager.UpdateItemAsync(episode, season, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                }
+            }
         }
     }
 }
