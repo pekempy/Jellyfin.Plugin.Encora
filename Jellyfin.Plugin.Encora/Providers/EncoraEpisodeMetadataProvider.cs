@@ -745,6 +745,17 @@ namespace Jellyfin.Plugin.Encora.Providers
                     updateType |= ItemUpdateType.MetadataEdit;
                 }
 
+                if (item.IndexNumber.HasValue)
+                {
+                    var deduped = EncoraEpisodeIndexResolver.ResolveCollision(_libraryManager, item.SeasonId, item.Id, item.IndexNumber.Value);
+                    if (deduped != item.IndexNumber.Value)
+                    {
+                        _logger.LogInformation("[Encora] [CustomProvider] Nudging Episode IndexNumber {OldIndex} -> {NewIndex} to avoid a sibling collision for {Path}", item.IndexNumber, deduped, item.Path);
+                        item.IndexNumber = deduped;
+                        updateType |= ItemUpdateType.MetadataEdit;
+                    }
+                }
+
                 return updateType;
             }
 
@@ -774,6 +785,17 @@ namespace Jellyfin.Plugin.Encora.Providers
                         item.ForcedSortName = nfoResult.Item.ForcedSortName;
                         updateType |= ItemUpdateType.MetadataEdit;
                     }
+                }
+            }
+
+            if (item.IndexNumber.HasValue)
+            {
+                var deduped = EncoraEpisodeIndexResolver.ResolveCollision(_libraryManager, item.SeasonId, item.Id, item.IndexNumber.Value);
+                if (deduped != item.IndexNumber.Value)
+                {
+                    _logger.LogInformation("[Encora] [CustomProvider] Nudging Episode IndexNumber {OldIndex} -> {NewIndex} to avoid a sibling collision for {Path}", item.IndexNumber, deduped, item.Path);
+                    item.IndexNumber = deduped;
+                    updateType |= ItemUpdateType.MetadataEdit;
                 }
             }
 
