@@ -161,7 +161,7 @@ namespace Jellyfin.Plugin.Encora.Providers
                 }
 
                 var posterLocked = EncoraRecordingApplier.IsPosterLocked(existingSeason);
-                var hasExistingImage = existingSeason != null && existingSeason.HasImage(ImageType.Primary, 0);
+                var hasExistingImage = (existingSeason != null && existingSeason.HasImage(ImageType.Primary, 0)) || EncoraRecordingApplier.HasLocalPosterFile(info.Path);
 
                 if ((Plugin.Instance?.Configuration?.TvFetchPoster ?? true) && !posterLocked && !hasExistingImage)
                 {

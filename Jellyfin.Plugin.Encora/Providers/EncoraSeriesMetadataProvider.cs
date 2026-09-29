@@ -177,7 +177,7 @@ namespace Jellyfin.Plugin.Encora.Providers
 
             var existingSeries = _libraryManager.FindByPath(info.Path, isFolder: true);
             var posterLocked = EncoraRecordingApplier.IsPosterLocked(existingSeries);
-            var hasExistingImage = existingSeries != null && existingSeries.HasImage(ImageType.Primary, 0);
+            var hasExistingImage = (existingSeries != null && existingSeries.HasImage(ImageType.Primary, 0)) || EncoraRecordingApplier.HasLocalPosterFile(info.Path);
 
             if ((Plugin.Instance?.Configuration?.TvFetchPoster ?? true) && !posterLocked && !hasExistingImage)
             {
@@ -192,6 +192,12 @@ namespace Jellyfin.Plugin.Encora.Providers
             if (posterLocked || hasExistingImage)
             {
                 EncoraRecordingApplier.MarkPosterLocked(series);
+            }
+
+            var hasExistingBackdrop = existingSeries != null && existingSeries.HasImage(ImageType.Backdrop, 0);
+            if ((Plugin.Instance?.Configuration?.TvSetRandomEpisodeBackdrop ?? true) && !hasExistingBackdrop && !EncoraRecordingApplier.HasLocalBackdropFile(info.Path))
+            {
+                EncoraRecordingApplier.ApplyRandomEpisodeBackdrop(_logger, info.Path);
             }
 
             result.HasMetadata = true;
@@ -249,7 +255,7 @@ namespace Jellyfin.Plugin.Encora.Providers
 
             var existingSeriesFromShow = _libraryManager.FindByPath(path, isFolder: true);
             var showPosterLocked = EncoraRecordingApplier.IsPosterLocked(existingSeriesFromShow);
-            var showHasExistingImage = existingSeriesFromShow != null && existingSeriesFromShow.HasImage(ImageType.Primary, 0);
+            var showHasExistingImage = (existingSeriesFromShow != null && existingSeriesFromShow.HasImage(ImageType.Primary, 0)) || EncoraRecordingApplier.HasLocalPosterFile(path);
 
             if ((Plugin.Instance?.Configuration?.TvFetchPoster ?? true) && !showPosterLocked && !showHasExistingImage)
             {
@@ -264,6 +270,12 @@ namespace Jellyfin.Plugin.Encora.Providers
             if (showPosterLocked || showHasExistingImage)
             {
                 EncoraRecordingApplier.MarkPosterLocked(series);
+            }
+
+            var showHasExistingBackdrop = existingSeriesFromShow != null && existingSeriesFromShow.HasImage(ImageType.Backdrop, 0);
+            if ((Plugin.Instance?.Configuration?.TvSetRandomEpisodeBackdrop ?? true) && !showHasExistingBackdrop && !EncoraRecordingApplier.HasLocalBackdropFile(path))
+            {
+                EncoraRecordingApplier.ApplyRandomEpisodeBackdrop(_logger, path);
             }
 
             result.HasMetadata = true;

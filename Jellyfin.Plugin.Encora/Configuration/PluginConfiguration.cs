@@ -50,6 +50,7 @@ public class PluginConfiguration : BasePluginConfiguration
         TvIncludeNftTag = true;
         TvFetchPoster = true;
         TvGenerateThumbnail = true;
+        TvSetRandomEpisodeBackdrop = true;
         TvThumbnailSeekMinPercent = 15;
         TvThumbnailSeekMaxPercent = 60;
 
@@ -255,6 +256,11 @@ public class PluginConfiguration : BasePluginConfiguration
     ///  Gets or sets a value indicating whether a thumb.png should be generated for Continue Watching, for TV libraries.
     /// </summary>
     public bool TvGenerateThumbnail { get; set; }
+
+    /// <summary>
+    ///  Gets or sets a value indicating whether the Series backdrop should be set from a random episode thumbnail, for TV libraries.
+    /// </summary>
+    public bool TvSetRandomEpisodeBackdrop { get; set; }
 
     /// <summary>
     ///  Gets or sets the minimum percentage into the video to seek when generating a thumbnail, for TV libraries.

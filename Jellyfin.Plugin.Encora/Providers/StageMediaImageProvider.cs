@@ -54,15 +54,18 @@ namespace Jellyfin.Plugin.Encora.Providers
         /// <inheritdoc />
         public async Task<IEnumerable<RemoteImageInfo>> GetImages(BaseItem item, CancellationToken cancellationToken)
         {
-            // GetImages backs Jellyfin's manual "Identify -> search for images" flow as well as its own
-            // automatic per-library image-fetcher pipeline - there's no signal in this interface to tell
-            // those two callers apart. Refusing candidates here for a locked poster or an item that
-            // already has one would also refuse them for the manual flow, where "already has a poster" /
-            // "poster is locked" is exactly why an admin opened search in the first place. Automated
-            // silent overwrites are guarded separately and unconditionally in EncoraSeasonMetadataProvider
-            // / EncoraSeriesMetadataProvider / EncoraMovieMetadataProvider's own direct StageMedia fetch,
-            // which checks IsPosterLocked/HasImage before ever calling FetchStageMediaImagesAsync - that
-            // guard is untouched. This method should always return every real candidate.
+            // Jellyfin calls IRemoteImageProvider.GetImages directly for its own automatic image refresh/fetch
+            // flows (configured in LibraryOptions ImageFetchers). If this returns candidate posters when an item
+            // already has a primary image, has a local poster file (e.g. folder.jpg), or has its poster locked,
+            // Jellyfin's automatic fetcher downloads the first candidate into metadata cache and silently overwrites
+            // the user's custom poster! We must strictly guard against this and return nothing.
+            if (EncoraRecordingApplier.IsPosterLocked(item) ||
+                item.HasImage(ImageType.Primary, 0) ||
+                EncoraRecordingApplier.HasLocalPosterFile(item.Path))
+            {
+                _logger.LogInformation("[Encora] [StageMedia] Skipping GetImages for {ItemType} '{ItemName}' - poster is locked, already exists, or local poster file is present", item.GetType().Name, item.Name);
+                return Enumerable.Empty<RemoteImageInfo>();
+            }
 
             _logger.LogInformation("[Encora] [StageMedia] GetImages called for {ItemType} '{ItemName}' ({ItemId})", item.GetType().Name, item.Name, item.Id);
 

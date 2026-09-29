@@ -163,6 +163,11 @@ namespace Jellyfin.Plugin.Encora.Providers
                 await ThumbGenerator.GenerateThumbPng(_logger, _mediaEncoder, episodeDir, info.Path, options.ThumbnailSeekMinPercent, options.ThumbnailSeekMaxPercent).ConfigureAwait(false);
             }
 
+            if (options.SetRandomEpisodeBackdrop)
+            {
+                TrySetSeriesBackdropFromEpisodeThumb(info.Path, episodeDir);
+            }
+
             return result;
         }
 
@@ -186,6 +191,7 @@ namespace Jellyfin.Plugin.Encora.Providers
                 IncludeNftTag = config?.TvIncludeNftTag ?? true,
                 FetchPoster = config?.TvFetchPoster ?? true,
                 GenerateThumbnail = config?.TvGenerateThumbnail ?? true,
+                SetRandomEpisodeBackdrop = config?.TvSetRandomEpisodeBackdrop ?? true,
                 ThumbnailSeekMinPercent = config?.TvThumbnailSeekMinPercent ?? 15,
                 ThumbnailSeekMaxPercent = config?.TvThumbnailSeekMaxPercent ?? 60,
             };
@@ -255,6 +261,11 @@ namespace Jellyfin.Plugin.Encora.Providers
             if (options.GenerateThumbnail)
             {
                 await ThumbGenerator.GenerateThumbPng(_logger, _mediaEncoder, episodeDir, info.Path, options.ThumbnailSeekMinPercent, options.ThumbnailSeekMaxPercent).ConfigureAwait(false);
+            }
+
+            if (options.SetRandomEpisodeBackdrop)
+            {
+                TrySetSeriesBackdropFromEpisodeThumb(info.Path, episodeDir);
             }
 
             string? nfoPath = Path.ChangeExtension(info.Path, ".nfo");
@@ -767,6 +778,65 @@ namespace Jellyfin.Plugin.Encora.Providers
             }
 
             return updateType;
+        }
+
+        /// <summary>
+        /// If the episode has a thumb.png and its parent series does not yet have a backdrop,
+        /// copies thumb.png to the series folder as backdrop.png.
+        /// </summary>
+        /// <param name="episodePath">The episode file path.</param>
+        /// <param name="episodeDir">The episode directory containing thumb.png.</param>
+        private void TrySetSeriesBackdropFromEpisodeThumb(string? episodePath, string? episodeDir)
+        {
+            if (string.IsNullOrWhiteSpace(episodePath) || string.IsNullOrWhiteSpace(episodeDir))
+            {
+                return;
+            }
+
+            try
+            {
+                var thumbPath = Path.Combine(episodeDir, "thumb.png");
+                if (!File.Exists(thumbPath))
+                {
+                    return;
+                }
+
+                string? seriesPath = null;
+                if (_libraryManager.FindByPath(episodePath, isFolder: false) is Episode episode && episode.SeriesId != Guid.Empty)
+                {
+                    var series = _libraryManager.GetItemById(episode.SeriesId) as Series;
+                    seriesPath = series?.Path;
+                }
+
+                if (string.IsNullOrWhiteSpace(seriesPath) || !Directory.Exists(seriesPath))
+                {
+                    var dir = new DirectoryInfo(episodeDir);
+                    while (dir?.Parent != null)
+                    {
+                        if (EncoraRecordingApplier.HasLocalPosterFile(dir.FullName))
+                        {
+                            seriesPath = dir.FullName;
+                            break;
+                        }
+
+                        dir = dir.Parent;
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(seriesPath) && Directory.Exists(seriesPath))
+                {
+                    if (!EncoraRecordingApplier.HasLocalBackdropFile(seriesPath))
+                    {
+                        var targetBackdrop = Path.Combine(seriesPath, "backdrop.png");
+                        File.Copy(thumbPath, targetBackdrop, overwrite: false);
+                        _logger.LogInformation("[Encora] ✅ Set series backdrop for {SeriesPath} from episode thumb: {ThumbPath}", seriesPath, thumbPath);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "[Encora] Could not set series backdrop from episode thumb for {Path}", episodePath);
+            }
         }
     }
 }

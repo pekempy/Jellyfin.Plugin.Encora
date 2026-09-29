@@ -62,6 +62,11 @@ namespace Jellyfin.Plugin.Encora.Models
         public bool GenerateThumbnail { get; set; } = true;
 
         /// <summary>
+        /// Gets or sets a value indicating whether the Series backdrop should be set from a random episode thumbnail.
+        /// </summary>
+        public bool SetRandomEpisodeBackdrop { get; set; } = true;
+
+        /// <summary>
         /// Gets or sets the minimum percentage into the video to seek when generating a thumbnail.
         /// </summary>
         public int ThumbnailSeekMinPercent { get; set; } = 15;

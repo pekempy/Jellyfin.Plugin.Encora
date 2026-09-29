@@ -336,12 +336,23 @@ namespace Jellyfin.Plugin.Encora.Models
         /// <returns><c>true</c> if a poster image file already exists; otherwise, <c>false</c>.</returns>
         public static bool HasLocalPosterFile(string? directory)
         {
-            if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+            if (string.IsNullOrWhiteSpace(directory))
             {
                 return false;
             }
 
-            var posterPrefixes = new[] { "folder", "poster", "cover", "default" };
+            var dir = directory;
+            if (File.Exists(dir))
+            {
+                dir = Path.GetDirectoryName(dir);
+            }
+
+            if (string.IsNullOrWhiteSpace(dir) || !Directory.Exists(dir))
+            {
+                return false;
+            }
+
+            var posterPrefixes = new[] { "folder", "poster", "cover", "default", "show" };
             var imageExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"
@@ -349,14 +360,15 @@ namespace Jellyfin.Plugin.Encora.Models
 
             try
             {
-                var files = Directory.GetFiles(directory);
+                var files = Directory.GetFiles(dir);
                 foreach (var file in files)
                 {
                     var fileNameWithoutExt = Path.GetFileNameWithoutExtension(file);
                     var ext = Path.GetExtension(file);
 
                     if (imageExtensions.Contains(ext) &&
-                        posterPrefixes.Any(p => string.Equals(fileNameWithoutExt, p, StringComparison.OrdinalIgnoreCase)))
+                        (posterPrefixes.Any(p => string.Equals(fileNameWithoutExt, p, StringComparison.OrdinalIgnoreCase)) ||
+                         fileNameWithoutExt.EndsWith("-poster", StringComparison.OrdinalIgnoreCase)))
                     {
                         return true;
                     }
@@ -368,6 +380,141 @@ namespace Jellyfin.Plugin.Encora.Models
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Checks if a directory already contains any standard backdrop/fanart image file.
+        /// </summary>
+        /// <param name="directory">The directory path to check.</param>
+        /// <returns><c>true</c> if a backdrop image file already exists; otherwise, <c>false</c>.</returns>
+        public static bool HasLocalBackdropFile(string? directory)
+        {
+            if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+            {
+                return false;
+            }
+
+            var backdropPrefixes = new[] { "backdrop", "fanart", "background", "art" };
+            var imageExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ".jpg", ".jpeg", ".png", ".webp"
+            };
+
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(directory, "*.*", SearchOption.TopDirectoryOnly))
+                {
+                    var fileNameWithoutExt = Path.GetFileNameWithoutExtension(file);
+                    var ext = Path.GetExtension(file);
+
+                    if (imageExtensions.Contains(ext) &&
+                        backdropPrefixes.Any(p => string.Equals(fileNameWithoutExt, p, StringComparison.OrdinalIgnoreCase) ||
+                                                  fileNameWithoutExt.StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch
+            {
+                return false;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Sets the Series backdrop from a random episode thumbnail found under the series directory,
+        /// if the series does not already have a backdrop image file.
+        /// </summary>
+        /// <param name="logger">Logger for diagnostics.</param>
+        /// <param name="seriesPath">The series root directory path.</param>
+        /// <param name="force">If true, overwrites an existing generated backdrop.</param>
+        /// <returns><c>true</c> if a backdrop was set; otherwise, <c>false</c>.</returns>
+        public static bool ApplyRandomEpisodeBackdrop(ILogger logger, string seriesPath, bool force = false)
+        {
+            if (string.IsNullOrWhiteSpace(seriesPath) || !Directory.Exists(seriesPath))
+            {
+                return false;
+            }
+
+            if (!force && HasLocalBackdropFile(seriesPath))
+            {
+                return false;
+            }
+
+            try
+            {
+                var candidateThumbs = new List<string>();
+
+                // 1) Look for standard thumb.png or thumb.jpg in subdirectories under the series
+                foreach (var file in Directory.EnumerateFiles(seriesPath, "*.*", SearchOption.AllDirectories))
+                {
+                    var dir = Path.GetDirectoryName(file);
+                    if (string.Equals(dir, seriesPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var name = Path.GetFileName(file);
+                    if (string.Equals(name, "thumb.png", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(name, "thumb.jpg", StringComparison.OrdinalIgnoreCase))
+                    {
+                        candidateThumbs.Add(file);
+                    }
+                }
+
+                // 2) Fallback: look for other screenshot / capture image files in subdirectories
+                if (candidateThumbs.Count == 0)
+                {
+                    foreach (var file in Directory.EnumerateFiles(seriesPath, "*.*", SearchOption.AllDirectories))
+                    {
+                        var dir = Path.GetDirectoryName(file);
+                        if (string.Equals(dir, seriesPath, StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        var ext = Path.GetExtension(file);
+                        if (!string.Equals(ext, ".png", StringComparison.OrdinalIgnoreCase) &&
+                            !string.Equals(ext, ".jpg", StringComparison.OrdinalIgnoreCase) &&
+                            !string.Equals(ext, ".jpeg", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        var nameWithoutExt = Path.GetFileNameWithoutExtension(file);
+                        var parentDirName = Path.GetFileName(dir);
+
+                        if (nameWithoutExt.Contains("thumb", StringComparison.OrdinalIgnoreCase) ||
+                            nameWithoutExt.Contains("vlcsnap", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(parentDirName, "Screenshots", StringComparison.OrdinalIgnoreCase))
+                        {
+                            candidateThumbs.Add(file);
+                        }
+                    }
+                }
+
+                if (candidateThumbs.Count == 0)
+                {
+                    logger.LogDebug("[Encora] No episode thumbs found under {SeriesPath} to set as backdrop", seriesPath);
+                    return false;
+                }
+
+                var randomIndex = Random.Shared.Next(candidateThumbs.Count);
+                var chosenThumb = candidateThumbs[randomIndex];
+                var chosenExt = Path.GetExtension(chosenThumb);
+                var targetBackdrop = Path.Combine(seriesPath, $"backdrop{chosenExt}");
+
+                File.Copy(chosenThumb, targetBackdrop, overwrite: true);
+                logger.LogInformation("[Encora] ✅ Set series backdrop for {SeriesPath} from random episode thumb: {ChosenThumb}", seriesPath, chosenThumb);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "[Encora] ⚠️ Failed to set series backdrop for {SeriesPath}", seriesPath);
+                return false;
+            }
         }
 
         /// <summary>

@@ -130,7 +130,7 @@ namespace Jellyfin.Plugin.Encora.Providers
 
                     var existingMovie = _libraryManager.FindByPath(info.Path, isFolder: false);
                     var posterLocked = EncoraRecordingApplier.IsPosterLocked(existingMovie);
-                    var hasExistingImage = existingMovie != null && existingMovie.HasImage(ImageType.Primary, 0);
+                    var hasExistingImage = (existingMovie != null && existingMovie.HasImage(ImageType.Primary, 0)) || EncoraRecordingApplier.HasLocalPosterFile(movieDir);
                     var posterPath = options.FetchPoster && !string.IsNullOrWhiteSpace(movieDir) && !posterLocked && !hasExistingImage
                         ? Path.Combine(movieDir, "folder.jpg")
                         : null;
