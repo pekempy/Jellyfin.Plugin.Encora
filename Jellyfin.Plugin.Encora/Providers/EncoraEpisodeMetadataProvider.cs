@@ -120,8 +120,8 @@ namespace Jellyfin.Plugin.Encora.Providers
 
                 if (recording == null)
                 {
-                    _logger.LogInformation("[Encora] ❌ Failed to fetch metadata from Encora for ID {EncoraId} for {Path} - Falling back to NFO metadata", encoraId, info.Path);
-                    return await ParseNfoMetadata(info, cancellationToken).ConfigureAwait(false);
+                    _logger.LogWarning("[Encora] ❌ Failed to fetch metadata from Encora for ID {EncoraId} for {Path} — Encora is the source of truth; skipping rather than falling back to NFO", encoraId, info.Path);
+                    return result;
                 }
 
                 _logger.LogInformation("[Encora] ✅ Successfully fetched metadata from Encora for ID {EncoraId}", encoraId);
@@ -154,8 +154,8 @@ namespace Jellyfin.Plugin.Encora.Providers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "[Encora] Error while fetching episode metadata from Encora for ID {EncoraId} for {Path} - Falling back to NFO metadata", encoraId, info.Path);
-                return await ParseNfoMetadata(info, cancellationToken).ConfigureAwait(false);
+                _logger.LogWarning(ex, "[Encora] Error fetching from Encora for ID {EncoraId} for {Path} — Encora is the source of truth; skipping rather than falling back to NFO", encoraId, info.Path);
+                return result;
             }
 
             if (options.GenerateThumbnail)

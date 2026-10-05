@@ -615,22 +615,40 @@ namespace Jellyfin.Plugin.Encora.Models
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
             client.DefaultRequestHeaders.UserAgent.ParseAdd("JellyfinAgent/0.1");
 
-            await EncoraRateLimiter.WaitAsync(logger, cancellationToken).ConfigureAwait(false);
-            var response = await client.GetAsync($"https://encora.it/api/recording/{encoraId}", cancellationToken).ConfigureAwait(false);
-            EncoraRateLimiter.UpdateFromResponse(response);
-
-            if (!response.IsSuccessStatusCode)
+            const int maxAttempts = 3;
+            for (var attempt = 1; attempt <= maxAttempts; attempt++)
             {
-                if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                await EncoraRateLimiter.WaitAsync(logger, cancellationToken).ConfigureAwait(false);
+                var response = await client.GetAsync($"https://encora.it/api/recording/{encoraId}", cancellationToken).ConfigureAwait(false);
+                EncoraRateLimiter.UpdateFromResponse(response);
+
+                if (response.IsSuccessStatusCode)
                 {
-                    logger.LogWarning("[Encora] Rate limited (429) fetching recording {EncoraId}", encoraId);
+                    var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                    return JsonSerializer.Deserialize<EncoraRecording>(json, JsonOptions);
                 }
 
-                return null;
+                if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                {
+                    logger.LogWarning("[Encora] Rate limited (429) fetching recording {EncoraId}, attempt {Attempt}/{Max} — will wait for reset before retry", encoraId, attempt, maxAttempts);
+                    // EncoraRateLimiter already has the Retry-After reset time; WaitAsync will block on next iteration
+                    if (attempt < maxAttempts)
+                    {
+                        continue;
+                    }
+                }
+                else if ((int)response.StatusCode >= 500 && attempt < maxAttempts)
+                {
+                    var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt));
+                    logger.LogWarning("[Encora] Server error {Status} fetching recording {EncoraId}, attempt {Attempt}/{Max} — retrying in {Delay}", response.StatusCode, encoraId, attempt, maxAttempts, delay);
+                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                    continue;
+                }
+
+                logger.LogWarning("[Encora] Failed to fetch recording {EncoraId} after {Attempt} attempt(s): {Status}", encoraId, attempt, response.StatusCode);
             }
 
-            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            return JsonSerializer.Deserialize<EncoraRecording>(json, JsonOptions);
+            return null;
         }
     }
 }

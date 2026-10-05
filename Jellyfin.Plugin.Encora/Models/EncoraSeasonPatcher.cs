@@ -1,7 +1,9 @@
 using System;
 using System.Globalization;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.Encora.Providers;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
@@ -57,11 +59,60 @@ namespace Jellyfin.Plugin.Encora.Models
                 return;
             }
 
+            // Only patch seasons without a physical on-disk folder — seasons that have a real
+            // folder are managed by EncoraSeasonMetadataProvider directly.
+            if (!string.IsNullOrWhiteSpace(season.Path) && System.IO.Directory.Exists(season.Path))
+            {
+                return;
+            }
+
             var newName = EncoraTitleFormatter.FormatTourTitle(seasonTitleFormat, recording);
             var newPremiereDate = DateTime.TryParse(recording.Date?.FullDate, out var date) ? date : (DateTime?)null;
 
+            if (string.IsNullOrWhiteSpace(newName))
+            {
+                return;
+            }
+
+            // If the current season already has the right name, only sync date/index if needed.
+            var series = libraryManager.GetItemById(episode.SeriesId);
+            if (series == null)
+            {
+                return;
+            }
+
+            // Check if a season with the target tour name already exists under this series.
+            // If so, re-parent just this episode there rather than renaming the current season
+            // (which may contain episodes from a different tour).
+            var existingTargetSeason = libraryManager.GetItemList(new InternalItemsQuery
+            {
+                ParentId = episode.SeriesId,
+                IncludeItemTypes = new[] { BaseItemKind.Season },
+                Recursive = true,
+            }).OfType<Season>()
+              .FirstOrDefault(s => s.Id != season.Id &&
+                                   string.Equals(s.Name?.Trim(), newName.Trim(), StringComparison.OrdinalIgnoreCase));
+
+            if (existingTargetSeason != null)
+            {
+                // Re-parent this episode to the existing correctly-named season instead of
+                // renaming the current season (which would break its other episodes).
+                episode.SetParent(existingTargetSeason);
+                episode.SeasonId = existingTargetSeason.Id;
+                episode.SeasonName = existingTargetSeason.Name;
+                episode.ParentIndexNumber = existingTargetSeason.IndexNumber;
+                await libraryManager.UpdateItemAsync(episode, existingTargetSeason, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                logger.LogInformation(
+                    "[Encora] ✅ Re-parented episode from season '{OldSeason}' to existing season '{NewSeason}' for {Path}",
+                    season.Name,
+                    newName,
+                    episodePath);
+                return;
+            }
+
+            // No existing season with the target name — patch (rename) the current season.
             var changed = false;
-            if (!string.IsNullOrWhiteSpace(newName) && !string.Equals(season.Name, newName, StringComparison.Ordinal))
+            if (!string.Equals(season.Name, newName, StringComparison.Ordinal))
             {
                 season.Name = newName;
                 changed = true;
@@ -75,7 +126,7 @@ namespace Jellyfin.Plugin.Encora.Models
 
             if (recording.Metadata != null && !season.ProviderIds.ContainsKey("StageMediaShowId"))
             {
-                season.SetProviderId("StageMediaShowId", recording.Metadata.ShowId.ToString(CultureInfo.InvariantCulture));
+                season.SetProviderId("StageMediaShowId", recording.Metadata.ShowId.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 changed = true;
             }
 
@@ -88,12 +139,6 @@ namespace Jellyfin.Plugin.Encora.Models
             }
 
             if (!changed)
-            {
-                return;
-            }
-
-            var series = libraryManager.GetItemById(episode.SeriesId);
-            if (series == null)
             {
                 return;
             }
