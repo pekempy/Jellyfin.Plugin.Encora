@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
@@ -20,8 +21,11 @@ namespace Jellyfin.Plugin.Encora.Models
     /// on-disk Path (or no Path at all - an orphaned scan artifact) are collapsed down to the one with
     /// the most episodes. Seasons sharing a name but backed by two genuinely different real folders (e.g.
     /// two non-Encora recordings manually assigned the same tour via <see cref="EncoraTourMarker"/>) are
-    /// never touched. Only database records are touched - files on disk are never deleted, so a later
-    /// scan will cleanly re-attach anything real.
+    /// never touched. Also collapses same-path/different-name duplicates that arise when Jellyfin's local
+    /// NfoParser creates a generic "Season N" entry from a stale season.nfo while the Encora plugin has
+    /// already created a correctly-named Season for the same folder (the gap between the name-grouped pass
+    /// above and the folder-merged pass in <see cref="EncoraSeasonMerger"/>). Only database records are
+    /// touched - files on disk are never deleted, so a later scan will cleanly re-attach anything real.
     /// </summary>
     public static class EncoraSeasonDuplicateCleaner
     {
@@ -32,14 +36,14 @@ namespace Jellyfin.Plugin.Encora.Models
         /// <param name="logger">Logger for diagnostics.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns>A task that represents the asynchronous operation.</returns>
-        public static Task RunAsync(ILibraryManager libraryManager, ILogger logger, CancellationToken cancellationToken)
+        public static async Task RunAsync(ILibraryManager libraryManager, ILogger logger, CancellationToken cancellationToken)
         {
             ArgumentNullException.ThrowIfNull(libraryManager);
             ArgumentNullException.ThrowIfNull(logger);
 
             if (Plugin.Instance?.Configuration?.EnableTvMatching != true)
             {
-                return Task.CompletedTask;
+                return;
             }
 
             var tvLibraryIds = Plugin.Instance?.Configuration?.TvLibraryIds;
@@ -118,7 +122,68 @@ namespace Jellyfin.Plugin.Encora.Models
                     series.Name);
             }
 
-            return Task.CompletedTask;
+            // Same-path / different-name duplicates: Jellyfin's NfoParser can create a generic "Season N"
+            // entry from a stale season.nfo <seasonnumber> while the Encora plugin has already created a
+            // correctly-named Season for the exact same folder. These are in different name-groups so the
+            // pass above misses them; the Merger also misses them because it only acts when there are 2+
+            // distinct real paths. Collapse to the Season with the more descriptive (non-generic) name, or
+            // the one with more episodes as a tiebreaker.
+            var pathGroups = seasons
+                .Where(season => !string.IsNullOrWhiteSpace(season.Path))
+                .GroupBy(season => (season.ParentId, Path: season.Path.Trim().ToLowerInvariant()))
+                .Where(g => g.Count() > 1);
+
+            foreach (var pathGroup in pathGroups)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var members = pathGroup.ToList();
+
+                var series = libraryManager.GetItemById(pathGroup.Key.ParentId);
+                var scopePath = members[0].Path;
+                if (string.IsNullOrWhiteSpace(series?.Path) || string.IsNullOrWhiteSpace(scopePath)
+                    || !EncoraLibraryScope.IsPathInScope(libraryManager, scopePath, tvLibraryIds))
+                {
+                    continue;
+                }
+
+                // Keep the one with a descriptive (non-generic) tour name; fall back to episode count.
+                var keeper = members
+                    .OrderBy(s => IsGenericSeasonName(s.Name) ? 1 : 0)
+                    .ThenByDescending(s => CountEpisodes(libraryManager, s))
+                    .ThenBy(s => s.Id)
+                    .First();
+
+                foreach (var loser in members.Where(s => s.Id != keeper.Id))
+                {
+                    var episodes = libraryManager.GetItemList(new InternalItemsQuery
+                    {
+                        ParentId = loser.Id,
+                        IncludeItemTypes = new[] { BaseItemKind.Episode },
+                        Recursive = true
+                    }).OfType<Episode>().ToList();
+
+                    foreach (var episode in episodes)
+                    {
+                        episode.SetParent(keeper);
+                        episode.SeasonId = keeper.Id;
+                        episode.SeasonName = keeper.Name;
+                        episode.ParentIndexNumber = keeper.IndexNumber;
+                        await libraryManager.UpdateItemAsync(episode, keeper, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    libraryManager.DeleteItem(loser, new DeleteOptions { DeleteFileLocation = false });
+                    logger.LogWarning(
+                        "[Encora] 🧩 Removed same-path duplicate Season '{LoserName}' (generic={IsGeneric}) under series '{SeriesName}' — kept '{KeeperName}' (path: {Path})",
+                        loser.Name,
+                        IsGenericSeasonName(loser.Name),
+                        series.Name,
+                        keeper.Name,
+                        scopePath);
+                }
+            }
+
+            return;
         }
 
         private static void RemoveDuplicateSeasons(ILibraryManager libraryManager, ILogger logger, string seriesName, List<Season> duplicates)
@@ -163,6 +228,12 @@ namespace Jellyfin.Plugin.Encora.Models
                 IncludeItemTypes = new[] { BaseItemKind.Episode },
                 Recursive = true
             }).Count;
+        }
+
+        private static bool IsGenericSeasonName(string? name)
+        {
+            return string.IsNullOrWhiteSpace(name)
+                || Regex.IsMatch(name.Trim(), @"^Season\s+\d+$", RegexOptions.IgnoreCase);
         }
     }
 }
