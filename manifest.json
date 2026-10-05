@@ -9,6 +9,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "1.2.3.5",
+        "changelog": "- Fix patcher guard to re-parent episodes and dynamically create tour seasons\n- Auto-update GitHub release notes from git commits when stub is used\n- Update manifest changelogs from tag commits and add publish fallback",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/1.2.3.5/encora-plugin_1.2.3.5.zip",
+        "checksum": "172133f297fcc2e1dc159391236672da",
+        "timestamp": "2026-10-05T13:35:09Z"
+      },
+      {
         "version": "1.2.3.4",
         "changelog": "- Skip season poster fetching from StageMedia, eliminating redundant HTTP calls and 522 gateway timeouts during TV library scans\n- Assign the show's primary poster directly to all child seasons upon refresh or patching\n- Automatically propagate show posters to existing seasons under the series when the series poster is resolved",
         "targetAbi": "10.11.0.0",
