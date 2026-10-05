@@ -9,6 +9,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "1.2.3.6",
+        "changelog": "- Enforce SeasonId and ParentIndexNumber from target tour season",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/1.2.3.6/encora-plugin_1.2.3.6.zip",
+        "checksum": "e9852dab7ab41044cd732335b83b7283",
+        "timestamp": "2026-10-05T14:20:16Z"
+      },
+      {
         "version": "1.2.3.5",
         "changelog": "- Fix patcher guard to re-parent episodes and dynamically create tour seasons\n- Auto-update GitHub release notes from git commits when stub is used\n- Update manifest changelogs from tag commits and add publish fallback",
         "targetAbi": "10.11.0.0",
