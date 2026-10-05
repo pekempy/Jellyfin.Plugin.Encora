@@ -31,7 +31,7 @@ namespace Jellyfin.Plugin.Encora.Providers
         private readonly ILogger<EncoraEpisodeMetadataProvider> _logger;
         private readonly IMediaEncoder _mediaEncoder;
         private readonly ILibraryManager _libraryManager;
-        private readonly ConcurrentDictionary<string, Episode> _pendingEpisodeUpdates = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly ConcurrentDictionary<string, Episode> _pendingEpisodeUpdates = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// Initializes a new instance of the <see cref="EncoraEpisodeMetadataProvider"/> class.
@@ -58,6 +58,17 @@ namespace Jellyfin.Plugin.Encora.Providers
         /// Gets the order of the provider.
         /// </summary>
         public int Order => 100;
+
+        internal static void RecordPendingSeason(string episodePath, Season targetSeason)
+        {
+            if (_pendingEpisodeUpdates.TryGetValue(episodePath, out var pending))
+            {
+                pending.SeasonId = targetSeason.Id;
+                pending.SeasonName = targetSeason.Name;
+                pending.ParentIndexNumber = targetSeason.IndexNumber;
+                pending.SetParent(targetSeason);
+            }
+        }
 
         /// <summary>
         /// Gets search results for episodes.
@@ -151,6 +162,7 @@ namespace Jellyfin.Plugin.Encora.Providers
 
                 var seasonTitleFormat = Plugin.Instance?.Configuration?.TvSeasonTitleFormat ?? "{tour}";
                 await EncoraSeasonPatcher.PatchParentSeasonAsync(_libraryManager, _logger, info.Path, recording, seasonTitleFormat, cancellationToken).ConfigureAwait(false);
+                SpawnPostDelayEpisodeUpdate(info.Path, episode);
             }
             catch (Exception ex)
             {
@@ -611,21 +623,31 @@ namespace Jellyfin.Plugin.Encora.Providers
                 });
             }
 
+            _pendingEpisodeUpdates[info.Path] = episode;
+
             if (!string.IsNullOrWhiteSpace(tour))
             {
                 var seasonTitleFormat = Plugin.Instance?.Configuration?.TvSeasonTitleFormat ?? "{tour}";
                 await EncoraSeasonPatcher.PatchParentSeasonAsync(_libraryManager, _logger, info.Path, recording, seasonTitleFormat, cancellationToken).ConfigureAwait(false);
             }
 
-            _pendingEpisodeUpdates[info.Path] = episode;
+            SpawnPostDelayEpisodeUpdate(info.Path, episode);
 
+            result.Item = episode;
+            result.HasMetadata = true;
+            _logger.LogInformation("[Encora] [NFO] ✅ Successfully processed NFO metadata for episode {Path}: Name='{Name}', IndexNumber={IndexNumber}", info.Path, episode.Name, episode.IndexNumber);
+            return result;
+        }
+
+        private void SpawnPostDelayEpisodeUpdate(string path, Episode episode)
+        {
             _ = Task.Run(
                 async () =>
                 {
                     try
                     {
                         await Task.Delay(1500).ConfigureAwait(false);
-                        if (_libraryManager.FindByPath(info.Path, isFolder: false) is Episode existingEpisode)
+                        if (_libraryManager.FindByPath(path, isFolder: false) is Episode existingEpisode)
                         {
                             var changed = false;
                             if (!string.Equals(existingEpisode.Name, episode.Name, StringComparison.Ordinal))
@@ -658,6 +680,24 @@ namespace Jellyfin.Plugin.Encora.Providers
                                 changed = true;
                             }
 
+                            if (episode.ParentIndexNumber.HasValue && existingEpisode.ParentIndexNumber != episode.ParentIndexNumber)
+                            {
+                                existingEpisode.ParentIndexNumber = episode.ParentIndexNumber;
+                                changed = true;
+                            }
+
+                            if (episode.SeasonId != Guid.Empty && existingEpisode.SeasonId != episode.SeasonId)
+                            {
+                                existingEpisode.SeasonId = episode.SeasonId;
+                                existingEpisode.SeasonName = episode.SeasonName;
+                                if (_libraryManager.GetItemById(episode.SeasonId) is Season targetSeason)
+                                {
+                                    existingEpisode.SetParent(targetSeason);
+                                }
+
+                                changed = true;
+                            }
+
                             if (changed)
                             {
                                 var parent = existingEpisode.SeasonId != Guid.Empty
@@ -667,22 +707,17 @@ namespace Jellyfin.Plugin.Encora.Providers
                                 if (parent != null)
                                 {
                                     await _libraryManager.UpdateItemAsync(existingEpisode, parent, ItemUpdateType.MetadataEdit, CancellationToken.None).ConfigureAwait(false);
-                                    _logger.LogInformation("[Encora] [NFO] ✅ Post-delay confirmed Episode in LibraryManager: Name='{Name}', IndexNumber={IndexNumber}", existingEpisode.Name, existingEpisode.IndexNumber);
+                                    _logger.LogInformation("[Encora] ✅ Post-delay confirmed Episode in LibraryManager: Name='{Name}', S{Season}E{Index}", existingEpisode.Name, existingEpisode.ParentIndexNumber, existingEpisode.IndexNumber);
                                 }
                             }
                         }
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "[Encora] [NFO] Error in post-delay Episode update for {Path}", info.Path);
+                        _logger.LogWarning(ex, "[Encora] Error in post-delay Episode update for {Path}", path);
                     }
                 },
                 CancellationToken.None);
-
-            result.Item = episode;
-            result.HasMetadata = true;
-            _logger.LogInformation("[Encora] [NFO] ✅ Successfully processed NFO metadata for episode {Path}: Name='{Name}', IndexNumber={IndexNumber}", info.Path, episode.Name, episode.IndexNumber);
-            return result;
         }
 
         /// <summary>
@@ -724,6 +759,26 @@ namespace Jellyfin.Plugin.Encora.Providers
                 {
                     _logger.LogInformation("[Encora] [CustomProvider] Overriding Episode IndexNumber from {OldIndex} to {NewIndex} for {Path}", item.IndexNumber, pending.IndexNumber, item.Path);
                     item.IndexNumber = pending.IndexNumber;
+                    updateType |= ItemUpdateType.MetadataEdit;
+                }
+
+                if (pending.ParentIndexNumber.HasValue && item.ParentIndexNumber != pending.ParentIndexNumber)
+                {
+                    _logger.LogInformation("[Encora] [CustomProvider] Overriding Episode ParentIndexNumber from {OldIndex} to {NewIndex} for {Path}", item.ParentIndexNumber, pending.ParentIndexNumber, item.Path);
+                    item.ParentIndexNumber = pending.ParentIndexNumber;
+                    updateType |= ItemUpdateType.MetadataEdit;
+                }
+
+                if (pending.SeasonId != Guid.Empty && item.SeasonId != pending.SeasonId)
+                {
+                    _logger.LogInformation("[Encora] [CustomProvider] Overriding Episode SeasonId from {OldSeasonId} to {NewSeasonId} ({SeasonName}) for {Path}", item.SeasonId, pending.SeasonId, pending.SeasonName, item.Path);
+                    item.SeasonId = pending.SeasonId;
+                    item.SeasonName = pending.SeasonName;
+                    if (_libraryManager.GetItemById(pending.SeasonId) is Season targetSeason)
+                    {
+                        item.SetParent(targetSeason);
+                    }
+
                     updateType |= ItemUpdateType.MetadataEdit;
                 }
 
@@ -777,6 +832,26 @@ namespace Jellyfin.Plugin.Encora.Providers
                     {
                         _logger.LogInformation("[Encora] [CustomProvider] Overriding Episode IndexNumber from {OldIndex} to {NewIndex} for {Path}", item.IndexNumber, nfoResult.Item.IndexNumber, item.Path);
                         item.IndexNumber = nfoResult.Item.IndexNumber;
+                        updateType |= ItemUpdateType.MetadataEdit;
+                    }
+
+                    if (nfoResult.Item.ParentIndexNumber.HasValue && item.ParentIndexNumber != nfoResult.Item.ParentIndexNumber)
+                    {
+                        _logger.LogInformation("[Encora] [CustomProvider] Overriding Episode ParentIndexNumber from {OldIndex} to {NewIndex} for {Path}", item.ParentIndexNumber, nfoResult.Item.ParentIndexNumber, item.Path);
+                        item.ParentIndexNumber = nfoResult.Item.ParentIndexNumber;
+                        updateType |= ItemUpdateType.MetadataEdit;
+                    }
+
+                    if (nfoResult.Item.SeasonId != Guid.Empty && item.SeasonId != nfoResult.Item.SeasonId)
+                    {
+                        _logger.LogInformation("[Encora] [CustomProvider] Overriding Episode SeasonId from {OldSeasonId} to {NewSeasonId} ({SeasonName}) for {Path}", item.SeasonId, nfoResult.Item.SeasonId, nfoResult.Item.SeasonName, item.Path);
+                        item.SeasonId = nfoResult.Item.SeasonId;
+                        item.SeasonName = nfoResult.Item.SeasonName;
+                        if (_libraryManager.GetItemById(nfoResult.Item.SeasonId) is Season targetSeason)
+                        {
+                            item.SetParent(targetSeason);
+                        }
+
                         updateType |= ItemUpdateType.MetadataEdit;
                     }
 

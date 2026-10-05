@@ -79,6 +79,13 @@ namespace Jellyfin.Plugin.Encora.Models
             // If the season already matches the target tour and has an on-disk folder, it's already managed.
             if (seasonMatchesTarget && !string.IsNullOrWhiteSpace(season.Path) && Directory.Exists(season.Path))
             {
+                if (episode.ParentIndexNumber != season.IndexNumber)
+                {
+                    episode.ParentIndexNumber = season.IndexNumber;
+                    await libraryManager.UpdateItemAsync(episode, season, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                }
+
+                EncoraEpisodeMetadataProvider.RecordPendingSeason(episodePath, season);
                 return;
             }
 
@@ -101,6 +108,7 @@ namespace Jellyfin.Plugin.Encora.Models
                     episode.SeasonName = existingTargetSeason.Name;
                     episode.ParentIndexNumber = existingTargetSeason.IndexNumber;
                     await libraryManager.UpdateItemAsync(episode, existingTargetSeason, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                    EncoraEpisodeMetadataProvider.RecordPendingSeason(episodePath, existingTargetSeason);
                     logger.LogInformation(
                         "[Encora] ✅ Re-parented episode from season '{OldSeason}' to existing season '{NewSeason}' for {Path}",
                         season.Name,
@@ -149,6 +157,7 @@ namespace Jellyfin.Plugin.Encora.Models
                     episode.SeasonName = newSeason.Name;
                     episode.ParentIndexNumber = newSeason.IndexNumber;
                     await libraryManager.UpdateItemAsync(episode, newSeason, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                    EncoraEpisodeMetadataProvider.RecordPendingSeason(episodePath, newSeason);
 
                     logger.LogInformation(
                         "[Encora] ✅ Created new Season '{NewSeason}' (S{Index}) and re-parented episode from '{OldSeason}' for {Path}",
@@ -201,8 +210,16 @@ namespace Jellyfin.Plugin.Encora.Models
             {
                 season.IndexNumber = newIndexNumber;
                 changed = true;
-                await EncoraSeasonIndexResolver.SyncChildEpisodeIndexNumbersAsync(libraryManager, season, cancellationToken).ConfigureAwait(false);
             }
+
+            if (episode.ParentIndexNumber != season.IndexNumber)
+            {
+                episode.ParentIndexNumber = season.IndexNumber;
+                await libraryManager.UpdateItemAsync(episode, season, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+            }
+
+            EncoraEpisodeMetadataProvider.RecordPendingSeason(episodePath, season);
+            await EncoraSeasonIndexResolver.SyncChildEpisodeIndexNumbersAsync(libraryManager, season, cancellationToken).ConfigureAwait(false);
 
             if (!season.HasImage(ImageType.Primary, 0) && !EncoraRecordingApplier.HasLocalPosterFile(season.Path))
             {

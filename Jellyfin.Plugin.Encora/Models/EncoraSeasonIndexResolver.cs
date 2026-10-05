@@ -75,12 +75,13 @@ namespace Jellyfin.Plugin.Encora.Models
         /// <returns>A task that represents the asynchronous operation.</returns>
         public static async Task SyncChildEpisodeIndexNumbersAsync(ILibraryManager libraryManager, Season season, CancellationToken cancellationToken)
         {
+            var parentId = season.SeriesId != Guid.Empty ? season.SeriesId : season.Id;
             var episodes = libraryManager.GetItemList(new InternalItemsQuery
             {
-                ParentId = season.Id,
+                ParentId = parentId,
                 IncludeItemTypes = new[] { BaseItemKind.Episode },
                 Recursive = true
-            }).OfType<Episode>();
+            }).OfType<Episode>().Where(e => e.SeasonId == season.Id || e.ParentId == season.Id);
 
             foreach (var episode in episodes)
             {
