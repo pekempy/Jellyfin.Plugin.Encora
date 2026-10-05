@@ -111,6 +111,7 @@ jobs:
           ZIP_NAME: ${{ steps.manifest.outputs.zip_name }}
           REPO: ${{ github.repository }}
           CHANGELOG: ${{ github.event.release.body }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           SOURCE_URL="https://github.com/${REPO}/releases/download/${TAG}/${ZIP_NAME}"
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -125,6 +126,8 @@ jobs:
               COMMIT_NOTES=$(git log "${PREV_TAG}..${TAG}" --format="- %s" 2>/dev/null | grep -v -E "(chore: update manifest|Merge pull request|Merge branch)" || true)
               if [ -n "$COMMIT_NOTES" ]; then
                 CHANGELOG="$COMMIT_NOTES"
+                # Update the GitHub release description itself if published via web/API
+                gh release edit "$TAG" --repo "$REPO" --notes "$CHANGELOG" 2>/dev/null || true
               fi
             fi
           fi
