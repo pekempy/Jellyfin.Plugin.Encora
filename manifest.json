@@ -9,6 +9,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "1.2.3.3",
+        "changelog": "**Full Changelog**: https://github.com/pekempy/Jellyfin.Plugin.Encora/compare/1.2.3.2...1.2.3.3",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/1.2.3.3/encora-plugin_1.2.3.3.zip",
+        "checksum": "34d15b385af1c6dd1751e662f8d65547",
+        "timestamp": "2026-10-05T11:16:55Z"
+      },
+      {
         "version": "1.2.3.2",
         "changelog": "\r\n\r\n**Full Changelog**: https://github.com/pekempy/Jellyfin.Plugin.Encora/compare/1.2.3.1...1.2.3.2",
         "targetAbi": "10.11.0.0",
