@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -28,6 +29,12 @@ namespace Jellyfin.Plugin.Encora.Models
     /// </summary>
     public static class EncoraSeasonPatcher
     {
+        // One semaphore per Series ensures that at most one episode thread at a time can query for an
+        // existing tour-named Season and potentially create a new one.  Without this, two concurrent
+        // episode refreshes for the same Series both query "does Broadway season exist?" simultaneously,
+        // both get "no", and both create one — producing the duplicate-season bug.
+        private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> _seriesLocks = new();
+
         /// <summary>
         /// Patches the given episode's parent Season (Name/PremiereDate/StageMediaShowId/IndexNumber)
         /// from a freshly-fetched Encora recording, if it needs updating. No-ops if the episode isn't
@@ -89,7 +96,12 @@ namespace Jellyfin.Plugin.Encora.Models
                 return;
             }
 
-            // Check if a season with the target tour name already exists under this series.
+            // Serialise per-series: prevents two concurrent episode refreshes from both finding
+            // "no existing Broadway season" and each creating one (the duplicate-season race).
+            var seriesLock = _seriesLocks.GetOrAdd(episode.SeriesId, _ => new SemaphoreSlim(1, 1));
+            await seriesLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
             if (!seasonMatchesTarget)
             {
                 var existingTargetSeason = libraryManager.GetItemList(new InternalItemsQuery
@@ -183,6 +195,11 @@ namespace Jellyfin.Plugin.Encora.Models
 
                     return;
                 }
+            }
+            }
+            finally
+            {
+                seriesLock.Release();
             }
 
             // No existing season with the target name — patch (rename) the current season.

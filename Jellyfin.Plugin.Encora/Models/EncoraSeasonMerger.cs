@@ -200,6 +200,15 @@ namespace Jellyfin.Plugin.Encora.Models
                     episode.SeasonId = keeper.Id;
                     episode.SeasonName = keeper.Name;
                     episode.ParentIndexNumber = keeper.IndexNumber;
+                    // Also fix SeriesId — episodes that were initially registered by Jellyfin's default
+                    // TV parser before the Encora provider ran can have SeriesId=Guid.Empty, leaving
+                    // PresentationUniqueKey=NULL and making them permanently invisible in the UI.
+                    if (episode.SeriesId == Guid.Empty && series != null)
+                    {
+                        episode.SeriesId = series.Id;
+                        episode.SeriesName = series.Name;
+                    }
+
                     await libraryManager.UpdateItemAsync(episode, keeper, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
                     mergedEpisodeCount++;
                 }
