@@ -187,15 +187,10 @@ namespace Jellyfin.Plugin.Encora.Providers
 
                 if ((Plugin.Instance?.Configuration?.TvFetchPoster ?? true) && !posterLocked && !hasExistingImage)
                 {
-                    var posterPath = Path.Combine(info.Path, "folder.jpg");
-                    await EncoraRecordingApplier.FetchStageMediaImagesAsync(_httpClientFactory, _logger, recording, posterPath, cancellationToken).ConfigureAwait(false);
-                    if (File.Exists(posterPath))
-                    {
-                        EncoraRecordingApplier.MarkPosterLocked(season);
-                    }
+                    AssignShowPoster(season, existingSeason, info.Path);
                 }
 
-                if (posterLocked || hasExistingImage)
+                if (posterLocked || hasExistingImage || EncoraRecordingApplier.IsPosterLocked(season))
                 {
                     EncoraRecordingApplier.MarkPosterLocked(season);
                 }
@@ -429,7 +424,106 @@ namespace Jellyfin.Plugin.Encora.Providers
                 }
             }
 
+            if ((Plugin.Instance?.Configuration?.TvFetchPoster ?? true) &&
+                !EncoraRecordingApplier.IsPosterLocked(item) &&
+                !item.HasImage(ImageType.Primary, 0) &&
+                !EncoraRecordingApplier.HasLocalPosterFile(item.Path))
+            {
+                AssignShowPoster(item, item, item.Path);
+                updated = true;
+            }
+
             return updated ? ItemUpdateType.MetadataEdit : ItemUpdateType.None;
+        }
+
+        private void AssignShowPoster(Season season, Season? existingSeason, string? seasonPath)
+        {
+            try
+            {
+                Series? series = null;
+                if (existingSeason != null && existingSeason.SeriesId != Guid.Empty)
+                {
+                    series = _libraryManager.GetItemById(existingSeason.SeriesId) as Series;
+                }
+
+                if (series == null && !string.IsNullOrWhiteSpace(seasonPath))
+                {
+                    var parentDir = Directory.GetParent(seasonPath)?.FullName;
+                    if (!string.IsNullOrWhiteSpace(parentDir))
+                    {
+                        series = _libraryManager.FindByPath(parentDir, isFolder: true) as Series;
+                    }
+                }
+
+                string? showPosterPath = null;
+                if (series != null && series.HasImage(ImageType.Primary, 0))
+                {
+                    showPosterPath = series.GetImagePath(ImageType.Primary);
+                }
+
+                if (string.IsNullOrWhiteSpace(showPosterPath) || !File.Exists(showPosterPath))
+                {
+                    var seriesDir = series?.Path;
+                    if (string.IsNullOrWhiteSpace(seriesDir) && !string.IsNullOrWhiteSpace(seasonPath))
+                    {
+                        seriesDir = Directory.GetParent(seasonPath)?.FullName;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(seriesDir) && Directory.Exists(seriesDir))
+                    {
+                        foreach (var name in new[] { "folder.jpg", "folder.png", "poster.jpg", "poster.png", "cover.jpg", "cover.png" })
+                        {
+                            var candidate = Path.Combine(seriesDir, name);
+                            if (File.Exists(candidate))
+                            {
+                                showPosterPath = candidate;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(showPosterPath) || !File.Exists(showPosterPath))
+                {
+                    return;
+                }
+
+                var assignedPoster = showPosterPath;
+                if (!string.IsNullOrWhiteSpace(seasonPath) && Directory.Exists(seasonPath))
+                {
+                    var seasonPosterPath = Path.Combine(seasonPath, "folder.jpg");
+                    if (!File.Exists(seasonPosterPath) && !string.Equals(Path.GetFullPath(seasonPosterPath), Path.GetFullPath(showPosterPath), StringComparison.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            File.Copy(showPosterPath, seasonPosterPath, overwrite: false);
+                            _logger.LogInformation("[Encora] Assigned show primary poster from {ShowPoster} to season folder {SeasonPoster}", showPosterPath, seasonPosterPath);
+                            assignedPoster = seasonPosterPath;
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "[Encora] Could not copy show poster to season folder {SeasonPoster}", seasonPosterPath);
+                        }
+                    }
+                    else if (File.Exists(seasonPosterPath))
+                    {
+                        assignedPoster = seasonPosterPath;
+                    }
+                }
+
+                season.SetImagePath(ImageType.Primary, assignedPoster);
+                EncoraRecordingApplier.MarkPosterLocked(season);
+
+                if (existingSeason != null && !ReferenceEquals(existingSeason, season))
+                {
+                    existingSeason.SetImagePath(ImageType.Primary, assignedPoster);
+                    EncoraRecordingApplier.MarkPosterLocked(existingSeason);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Encora] Failed to assign show poster to season at {Path}", seasonPath);
+            }
         }
 
         /// <summary>

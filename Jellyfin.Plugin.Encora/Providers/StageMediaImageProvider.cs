@@ -18,9 +18,7 @@ using Microsoft.Extensions.Logging;
 namespace Jellyfin.Plugin.Encora.Providers
 {
     /// <summary>
-    /// Provides remote image support for Movies, Series and Seasons using the StageMedia API. StageMedia's
-    /// image pool is keyed by show, not by a specific recording/tour/date, so Series and Season share the
-    /// exact same searchable poster pool as their underlying Movies do.
+    /// Provides remote image support for Movies and Series using the StageMedia API.
     /// </summary>
     public class StageMediaImageProvider : IRemoteImageProvider
     {
@@ -44,7 +42,7 @@ namespace Jellyfin.Plugin.Encora.Providers
         public string Name => "StageMedia";
 
         /// <inheritdoc />
-        public bool Supports(BaseItem item) => item is Movie || item is Series || item is Season;
+        public bool Supports(BaseItem item) => item is Movie || item is Series;
 
         /// <inheritdoc />
         public IEnumerable<ImageType> GetSupportedImages(BaseItem item)
@@ -55,6 +53,11 @@ namespace Jellyfin.Plugin.Encora.Providers
         /// <inheritdoc />
         public async Task<IEnumerable<RemoteImageInfo>> GetImages(BaseItem item, CancellationToken cancellationToken)
         {
+            if (item is Season)
+            {
+                return Enumerable.Empty<RemoteImageInfo>();
+            }
+
             var stack = Environment.StackTrace;
             var isManualSearch = stack.Contains("RemoteImageController", StringComparison.OrdinalIgnoreCase);
 

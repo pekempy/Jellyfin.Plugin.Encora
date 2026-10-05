@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -138,12 +139,61 @@ namespace Jellyfin.Plugin.Encora.Models
                 await EncoraSeasonIndexResolver.SyncChildEpisodeIndexNumbersAsync(libraryManager, season, cancellationToken).ConfigureAwait(false);
             }
 
+            if (!season.HasImage(ImageType.Primary, 0) && !EncoraRecordingApplier.HasLocalPosterFile(season.Path))
+            {
+                var showPoster = series.GetImagePath(ImageType.Primary);
+                if (string.IsNullOrWhiteSpace(showPoster) || !File.Exists(showPoster))
+                {
+                    if (!string.IsNullOrWhiteSpace(series.Path) && Directory.Exists(series.Path))
+                    {
+                        foreach (var name in new[] { "folder.jpg", "folder.png", "poster.jpg", "poster.png" })
+                        {
+                            var candidate = Path.Combine(series.Path, name);
+                            if (File.Exists(candidate))
+                            {
+                                showPoster = candidate;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(showPoster) && File.Exists(showPoster))
+                {
+                    var assignedPoster = showPoster;
+                    if (!string.IsNullOrWhiteSpace(season.Path) && Directory.Exists(season.Path))
+                    {
+                        var seasonPosterPath = Path.Combine(season.Path, "folder.jpg");
+                        if (!File.Exists(seasonPosterPath) && !string.Equals(Path.GetFullPath(seasonPosterPath), Path.GetFullPath(showPoster), StringComparison.OrdinalIgnoreCase))
+                        {
+                            try
+                            {
+                                File.Copy(showPoster, seasonPosterPath, overwrite: false);
+                                assignedPoster = seasonPosterPath;
+                            }
+                            catch (Exception ex)
+                            {
+                                logger.LogWarning(ex, "[Encora] Could not copy show poster to season folder {SeasonPoster}", seasonPosterPath);
+                            }
+                        }
+                        else if (File.Exists(seasonPosterPath))
+                        {
+                            assignedPoster = seasonPosterPath;
+                        }
+                    }
+
+                    season.SetImagePath(ImageType.Primary, assignedPoster);
+                    EncoraRecordingApplier.MarkPosterLocked(season);
+                    changed = true;
+                }
+            }
+
             if (!changed)
             {
                 return;
             }
 
-            await libraryManager.UpdateItemAsync(season, series, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+            await libraryManager.UpdateItemAsync(season, series!, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
             logger.LogInformation(
                 "[Encora] ✅ Patched Season '{Name}' (S{Index}) for Series {SeriesId} from Episode {EpisodePath}",
                 newName,

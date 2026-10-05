@@ -6,7 +6,9 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Data.Enums;
 using Jellyfin.Plugin.Encora.Models;
+using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
@@ -194,6 +196,11 @@ namespace Jellyfin.Plugin.Encora.Providers
                 EncoraRecordingApplier.MarkPosterLocked(series);
             }
 
+            if (existingSeries != null)
+            {
+                PropagateShowPosterToSeasons(existingSeries, Path.Combine(info.Path, "folder.jpg"));
+            }
+
             var hasExistingBackdrop = existingSeries != null && existingSeries.HasImage(ImageType.Backdrop, 0);
             if ((Plugin.Instance?.Configuration?.TvSetRandomEpisodeBackdrop ?? true) && !hasExistingBackdrop && !EncoraRecordingApplier.HasLocalBackdropFile(info.Path))
             {
@@ -272,6 +279,11 @@ namespace Jellyfin.Plugin.Encora.Providers
                 EncoraRecordingApplier.MarkPosterLocked(series);
             }
 
+            if (existingSeriesFromShow != null)
+            {
+                PropagateShowPosterToSeasons(existingSeriesFromShow, Path.Combine(path, "folder.jpg"));
+            }
+
             var showHasExistingBackdrop = existingSeriesFromShow != null && existingSeriesFromShow.HasImage(ImageType.Backdrop, 0);
             if ((Plugin.Instance?.Configuration?.TvSetRandomEpisodeBackdrop ?? true) && !showHasExistingBackdrop && !EncoraRecordingApplier.HasLocalBackdropFile(path))
             {
@@ -281,6 +293,69 @@ namespace Jellyfin.Plugin.Encora.Providers
             result.HasMetadata = true;
             result.Item = series;
             return result;
+        }
+
+        private void PropagateShowPosterToSeasons(BaseItem series, string? posterPath)
+        {
+            try
+            {
+                var showPoster = posterPath;
+                if ((string.IsNullOrWhiteSpace(showPoster) || !File.Exists(showPoster)) && series.HasImage(ImageType.Primary, 0))
+                {
+                    showPoster = series.GetImagePath(ImageType.Primary);
+                }
+
+                if (string.IsNullOrWhiteSpace(showPoster) || !File.Exists(showPoster))
+                {
+                    return;
+                }
+
+                var seasons = _libraryManager.GetItemList(new InternalItemsQuery
+                {
+                    ParentId = series.Id,
+                    IncludeItemTypes = new[] { BaseItemKind.Season },
+                    Recursive = true
+                }).OfType<Season>().ToList();
+
+                foreach (var season in seasons)
+                {
+                    if (EncoraRecordingApplier.IsPosterLocked(season) ||
+                        season.HasImage(ImageType.Primary, 0) ||
+                        EncoraRecordingApplier.HasLocalPosterFile(season.Path))
+                    {
+                        continue;
+                    }
+
+                    var assignedPoster = showPoster;
+                    if (!string.IsNullOrWhiteSpace(season.Path) && Directory.Exists(season.Path))
+                    {
+                        var seasonPosterPath = Path.Combine(season.Path, "folder.jpg");
+                        if (!File.Exists(seasonPosterPath) && !string.Equals(Path.GetFullPath(seasonPosterPath), Path.GetFullPath(showPoster), StringComparison.OrdinalIgnoreCase))
+                        {
+                            try
+                            {
+                                File.Copy(showPoster, seasonPosterPath, overwrite: false);
+                                assignedPoster = seasonPosterPath;
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "[Encora] Could not copy show poster to season folder {SeasonPoster}", seasonPosterPath);
+                            }
+                        }
+                        else if (File.Exists(seasonPosterPath))
+                        {
+                            assignedPoster = seasonPosterPath;
+                        }
+                    }
+
+                    season.SetImagePath(ImageType.Primary, assignedPoster);
+                    EncoraRecordingApplier.MarkPosterLocked(season);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[Encora] Failed to propagate show poster to child seasons for series {SeriesName}", series.Name);
+            }
         }
 
         /// <summary>
