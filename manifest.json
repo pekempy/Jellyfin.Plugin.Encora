@@ -10,7 +10,7 @@
     "versions": [
       {
         "version": "1.2.3.4",
-        "changelog": "**Full Changelog**: https://github.com/pekempy/Jellyfin.Plugin.Encora/compare/1.2.3.3...1.2.3.4",
+        "changelog": "- Skip season poster fetching from StageMedia, eliminating redundant HTTP calls and 522 gateway timeouts during TV library scans\n- Assign the show's primary poster directly to all child seasons upon refresh or patching\n- Automatically propagate show posters to existing seasons under the series when the series poster is resolved",
         "targetAbi": "10.11.0.0",
         "sourceUrl": "https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/1.2.3.4/encora-plugin_1.2.3.4.zip",
         "checksum": "08597e9314ec83727086ee72a0ad4e16",
@@ -18,7 +18,7 @@
       },
       {
         "version": "1.2.3.3",
-        "changelog": "**Full Changelog**: https://github.com/pekempy/Jellyfin.Plugin.Encora/compare/1.2.3.2...1.2.3.3",
+        "changelog": "- Add persistent Encora collection cache on disk to eliminate per-item API lookups during media scans\n- Auto-seed the collection cache on startup if empty or stale\n- Add scheduled task to periodically refresh the Encora collection cache in the background",
         "targetAbi": "10.11.0.0",
         "sourceUrl": "https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/1.2.3.3/encora-plugin_1.2.3.3.zip",
         "checksum": "34d15b385af1c6dd1751e662f8d65547",
@@ -26,7 +26,7 @@
       },
       {
         "version": "1.2.3.2",
-        "changelog": "\r\n\r\n**Full Changelog**: https://github.com/pekempy/Jellyfin.Plugin.Encora/compare/1.2.3.1...1.2.3.2",
+        "changelog": "- Add retry logic with exponential backoff for Encora API rate limits and transient connection errors\n- Prioritize Encora API data as gospel over local/partial file metadata\n- Improve season tour conflict resolution when multiple recordings resolve to different tours",
         "targetAbi": "10.11.0.0",
         "sourceUrl": "https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/1.2.3.2/encora-plugin_1.2.3.2.zip",
         "checksum": "d56203ec93f471fac60d996aab248591",
@@ -34,7 +34,7 @@
       },
       {
         "version": "1.2.3.1",
-        "changelog": "**Full Changelog**: https://github.com/pekempy/Jellyfin.Plugin.Encora/compare/1.2.3.0...1.2.3.1",
+        "changelog": "- Fix phantom \"Season N\" ghost entries in Jellyfin caused by library scanner creating same-path / different-name duplicate season records\n- Automatically purge same-path duplicate season rows during duplicate cleaning",
         "targetAbi": "10.11.0.0",
         "sourceUrl": "https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/1.2.3.1/encora-plugin_1.2.3.1.zip",
         "checksum": "e0c05e5b1c86e0150fd8656859986f0f",
@@ -50,7 +50,7 @@
       },
       {
         "version": "1.2.1.2",
-        "changelog": "**Full Changelog**: https://github.com/pekempy/Jellyfin.Plugin.Encora/compare/1.2.1.1...1.2.1.2",
+        "changelog": "- Enforce Encora episode naming and date-encoded IndexNumber on NFO-backed items\n- Parse explicit recording dates from NFO title when folder path has an unknown day or month\n- Add symlink source folder fallback when locating episode NFO files\n- Fix season name overrides and automatic tour merging for non-Encora recordings\n- Protect the active season during inline merges to prevent race conditions, and keep episode parent season indices synchronized",
         "targetAbi": "10.11.0.0",
         "sourceUrl": "https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/1.2.1.2/encora-plugin_1.2.1.2.zip",
         "checksum": "8c59ffdf2cc38c6923d42fbf6cb31316",
@@ -58,7 +58,7 @@
       },
       {
         "version": "1.2.1.1",
-        "changelog": "**Full Changelog**: https://github.com/pekempy/Jellyfin.Plugin.Encora/compare/1.2.1.0...1.2.1.1",
+        "changelog": "- Fix ffmpeg thumbnail generation hang with bounded timeout so stalled video seeks no longer discard episode metadata\n- Self-heal Season fragmentation on every refresh inline, preventing multi-recording tours from re-fragmenting into individual seasons",
         "targetAbi": "10.11.0.0",
         "sourceUrl": "https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/1.2.1.1/encora-plugin_1.2.1.1.zip",
         "checksum": "93277a7f084c62eb07a95703767d1a79",
@@ -66,7 +66,7 @@
       },
       {
         "version": "1.2.1.0",
-        "changelog": "**Full Changelog**: https://github.com/pekempy/Jellyfin.Plugin.Encora/compare/1.2.0.9...1.2.1.0",
+        "changelog": "- Add on-demand \"Merge Duplicate/Same-Tour Seasons\" scheduled task to consolidate fragmented seasons without requiring a full library scan\n- Speed up season consolidation by operating directly on database rows",
         "targetAbi": "10.11.0.0",
         "sourceUrl": "https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/1.2.1.0/encora-plugin_1.2.1.0.zip",
         "checksum": "a1ddfcfce10266225786972ca0f04770",
@@ -82,7 +82,7 @@
       },
       {
         "version": "1.2.0.8",
-        "changelog": "See release notes",
+        "changelog": "- Support Seasons published without a physical Season folder (S##E## in filename directly under recording folder via EncoraSeasonPatcher)\n- Add manual tour assignment interface in TV configuration for non-Encora recordings via .encora-tour markers\n- Never collapse Seasons that share a name but live in distinct physical directories\n- Fix 32-bit integer overflow in Episode IndexNumber date calculation",
         "targetAbi": "10.11.0.0",
         "sourceUrl": "https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/1.2.0.8/encora-plugin_1.2.0.8.zip",
         "checksum": "38b442f09cb3a1f1d5fce39bc4689918",
@@ -106,7 +106,7 @@
       },
       {
         "version": "1.2.0.5",
-        "changelog": "**Full Changelog**: https://github.com/pekempy/Jellyfin.Plugin.Encora/compare/1.2.0.4...1.2.0.5",
+        "changelog": "- Fix HasImage check by passing imageIndex=0 to BaseItem.HasImage\n- Fix missing using directive in EncoraMusicAlbumMetadataProvider",
         "targetAbi": "10.11.0.0",
         "sourceUrl": "https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/1.2.0.5/encora-plugin_1.2.0.5.zip",
         "checksum": "7268df5dc992badcbfa8ae6a7bde38c4",

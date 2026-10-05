@@ -101,6 +101,7 @@ jobs:
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
           ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
 
       - name: Update plugin manifest
         env:
@@ -113,6 +114,20 @@ jobs:
         run: |
           SOURCE_URL="https://github.com/${REPO}/releases/download/${TAG}/${ZIP_NAME}"
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          # If the release body is empty or contains only GitHub's auto-generated stub link,
+          # generate the changelog from commit messages between the previous tag and this tag.
+          CLEANED_CHANGELOG=$(printf '%s' "$CHANGELOG" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+          if [ -z "$CLEANED_CHANGELOG" ] || [ "$CLEANED_CHANGELOG" = "See release notes" ] || echo "$CLEANED_CHANGELOG" | grep -q '^\*\*Full Changelog\*\*:'; then
+            git fetch --tags --force 2>/dev/null || true
+            PREV_TAG=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || git tag -l --sort=-v:refname | grep -v "^${TAG}$" | head -n1 || true)
+            if [ -n "$PREV_TAG" ]; then
+              COMMIT_NOTES=$(git log "${PREV_TAG}..${TAG}" --format="- %s" 2>/dev/null | grep -v -E "(chore: update manifest|Merge pull request|Merge branch)" || true)
+              if [ -n "$COMMIT_NOTES" ]; then
+                CHANGELOG="$COMMIT_NOTES"
+              fi
+            fi
+          fi
 
           # Escape changelog for JSON (replace newlines with \n); env vars are never re-parsed by the
           # shell, so backticks/quotes/etc. in the release body can't be interpreted as shell syntax here.
