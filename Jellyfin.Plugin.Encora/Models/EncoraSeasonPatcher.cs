@@ -60,13 +60,6 @@ namespace Jellyfin.Plugin.Encora.Models
                 return;
             }
 
-            // Only patch seasons without a physical on-disk folder — seasons that have a real
-            // folder are managed by EncoraSeasonMetadataProvider directly.
-            if (!string.IsNullOrWhiteSpace(season.Path) && System.IO.Directory.Exists(season.Path))
-            {
-                return;
-            }
-
             var newName = EncoraTitleFormatter.FormatTourTitle(seasonTitleFormat, recording);
             var newPremiereDate = DateTime.TryParse(recording.Date?.FullDate, out var date) ? date : (DateTime?)null;
 
@@ -75,40 +68,112 @@ namespace Jellyfin.Plugin.Encora.Models
                 return;
             }
 
-            // If the current season already has the right name, only sync date/index if needed.
-            var series = libraryManager.GetItemById(episode.SeriesId);
+            var series = libraryManager.GetItemById(episode.SeriesId) as Folder;
             if (series == null)
             {
                 return;
             }
 
-            // Check if a season with the target tour name already exists under this series.
-            // If so, re-parent just this episode there rather than renaming the current season
-            // (which may contain episodes from a different tour).
-            var existingTargetSeason = libraryManager.GetItemList(new InternalItemsQuery
-            {
-                ParentId = episode.SeriesId,
-                IncludeItemTypes = new[] { BaseItemKind.Season },
-                Recursive = true,
-            }).OfType<Season>()
-              .FirstOrDefault(s => s.Id != season.Id &&
-                                   string.Equals(s.Name?.Trim(), newName.Trim(), StringComparison.OrdinalIgnoreCase));
+            var seasonMatchesTarget = string.Equals(season.Name?.Trim(), newName.Trim(), StringComparison.OrdinalIgnoreCase);
 
-            if (existingTargetSeason != null)
+            // If the season already matches the target tour and has an on-disk folder, it's already managed.
+            if (seasonMatchesTarget && !string.IsNullOrWhiteSpace(season.Path) && Directory.Exists(season.Path))
             {
-                // Re-parent this episode to the existing correctly-named season instead of
-                // renaming the current season (which would break its other episodes).
-                episode.SetParent(existingTargetSeason);
-                episode.SeasonId = existingTargetSeason.Id;
-                episode.SeasonName = existingTargetSeason.Name;
-                episode.ParentIndexNumber = existingTargetSeason.IndexNumber;
-                await libraryManager.UpdateItemAsync(episode, existingTargetSeason, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
-                logger.LogInformation(
-                    "[Encora] ✅ Re-parented episode from season '{OldSeason}' to existing season '{NewSeason}' for {Path}",
-                    season.Name,
-                    newName,
-                    episodePath);
                 return;
+            }
+
+            // Check if a season with the target tour name already exists under this series.
+            if (!seasonMatchesTarget)
+            {
+                var existingTargetSeason = libraryManager.GetItemList(new InternalItemsQuery
+                {
+                    ParentId = episode.SeriesId,
+                    IncludeItemTypes = new[] { BaseItemKind.Season },
+                    Recursive = true,
+                }).OfType<Season>()
+                  .FirstOrDefault(s => s.Id != season.Id &&
+                                       string.Equals(s.Name?.Trim(), newName.Trim(), StringComparison.OrdinalIgnoreCase));
+
+                if (existingTargetSeason != null)
+                {
+                    episode.SetParent(existingTargetSeason);
+                    episode.SeasonId = existingTargetSeason.Id;
+                    episode.SeasonName = existingTargetSeason.Name;
+                    episode.ParentIndexNumber = existingTargetSeason.IndexNumber;
+                    await libraryManager.UpdateItemAsync(episode, existingTargetSeason, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+                    logger.LogInformation(
+                        "[Encora] ✅ Re-parented episode from season '{OldSeason}' to existing season '{NewSeason}' for {Path}",
+                        season.Name,
+                        newName,
+                        episodePath);
+                    return;
+                }
+
+                // If the current season contains other episodes or is another folder, create a new season.
+                var otherEpisodes = libraryManager.GetItemList(new InternalItemsQuery
+                {
+                    ParentId = season.Id,
+                    IncludeItemTypes = new[] { BaseItemKind.Episode },
+                    Recursive = true,
+                }).OfType<Episode>().Where(e => e.Id != episode.Id).ToList();
+
+                var isForeignPhysicalFolder = !string.IsNullOrWhiteSpace(season.Path)
+                    && Directory.Exists(season.Path)
+                    && !episodePath.StartsWith(season.Path, StringComparison.OrdinalIgnoreCase);
+
+                if (otherEpisodes.Count > 0 || isForeignPhysicalFolder)
+                {
+                    var newIndex = EncoraSeasonIndexResolver.ResolveIndexNumber(libraryManager, episode.SeriesId, Guid.Empty, newPremiereDate, newName);
+                    var newSeason = new Season
+                    {
+                        Name = newName,
+                        IndexNumber = newIndex,
+                        PremiereDate = newPremiereDate,
+                        SeriesId = series.Id,
+                        SeriesName = series.Name,
+                        SeriesPresentationUniqueKey = series.GetPresentationUniqueKey(),
+                        Id = libraryManager.GetNewItemId(
+                            series.Id + newIndex.ToString(CultureInfo.InvariantCulture) + newName,
+                            typeof(Season))
+                    };
+
+                    if (recording.Metadata != null)
+                    {
+                        newSeason.SetProviderId("StageMediaShowId", recording.Metadata.ShowId.ToString(CultureInfo.InvariantCulture));
+                    }
+
+                    series.AddChild(newSeason);
+
+                    episode.SetParent(newSeason);
+                    episode.SeasonId = newSeason.Id;
+                    episode.SeasonName = newSeason.Name;
+                    episode.ParentIndexNumber = newSeason.IndexNumber;
+                    await libraryManager.UpdateItemAsync(episode, newSeason, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+
+                    logger.LogInformation(
+                        "[Encora] ✅ Created new Season '{NewSeason}' (S{Index}) and re-parented episode from '{OldSeason}' for {Path}",
+                        newName,
+                        newIndex,
+                        season.Name,
+                        episodePath);
+
+                    _ = Task.Run(
+                        async () =>
+                        {
+                            try
+                            {
+                                await Task.Delay(2500).ConfigureAwait(false);
+                                await EncoraSeasonMerger.MergeAsync(libraryManager, logger, episode.SeriesId, newName, protectItemId: null, CancellationToken.None).ConfigureAwait(false);
+                            }
+                            catch (Exception ex)
+                            {
+                                logger.LogWarning(ex, "[Encora] Failed in post-delay Season merge from episode patcher for {Path}", episodePath);
+                            }
+                        },
+                        CancellationToken.None);
+
+                    return;
+                }
             }
 
             // No existing season with the target name — patch (rename) the current season.
