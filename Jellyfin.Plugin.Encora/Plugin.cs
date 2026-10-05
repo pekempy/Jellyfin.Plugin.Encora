@@ -39,6 +39,7 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
         _logger = logger;
 
         RestoreConfigurationFromBackupIfNeeded();
+        EncoraCollectionCache.Initialize(applicationPaths.DataPath, logger);
     }
 
     /// <summary>

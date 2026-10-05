@@ -611,6 +611,13 @@ namespace Jellyfin.Plugin.Encora.Models
 
         private static async Task<EncoraRecording?> FetchRecordingUncachedAsync(IHttpClientFactory httpClientFactory, ILogger logger, string apiKey, string encoraId, CancellationToken cancellationToken)
         {
+            // Collection cache hit: no API call needed for recordings already in the user's Encora collection
+            if (EncoraCollectionCache.TryGet(encoraId, out var cached) && cached != null)
+            {
+                logger.LogDebug("[Encora] Collection cache hit for recording {EncoraId}", encoraId);
+                return cached;
+            }
+
             var client = httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
             client.DefaultRequestHeaders.UserAgent.ParseAdd("JellyfinAgent/0.1");

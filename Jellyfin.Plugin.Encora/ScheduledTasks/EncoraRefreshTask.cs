@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Data.Enums;
@@ -21,6 +22,7 @@ namespace Jellyfin.Plugin.Encora.ScheduledTasks
         private readonly ILibraryManager _libraryManager;
         private readonly IProviderManager _providerManager;
         private readonly IFileSystem _fileSystem;
+        private readonly IHttpClientFactory _httpClientFactory;
         private readonly ILogger<EncoraRefreshTask> _logger;
 
         /// <summary>
@@ -29,12 +31,14 @@ namespace Jellyfin.Plugin.Encora.ScheduledTasks
         /// <param name="libraryManager">The library manager.</param>
         /// <param name="providerManager">The provider manager.</param>
         /// <param name="fileSystem">The file system.</param>
+        /// <param name="httpClientFactory">The HTTP client factory, used to refresh the collection cache.</param>
         /// <param name="logger">The logger.</param>
-        public EncoraRefreshTask(ILibraryManager libraryManager, IProviderManager providerManager, IFileSystem fileSystem, ILogger<EncoraRefreshTask> logger)
+        public EncoraRefreshTask(ILibraryManager libraryManager, IProviderManager providerManager, IFileSystem fileSystem, IHttpClientFactory httpClientFactory, ILogger<EncoraRefreshTask> logger)
         {
             _libraryManager = libraryManager;
             _providerManager = providerManager;
             _fileSystem = fileSystem;
+            _httpClientFactory = httpClientFactory;
             _logger = logger;
         }
 
@@ -76,13 +80,17 @@ namespace Jellyfin.Plugin.Encora.ScheduledTasks
         }
 
         /// <inheritdoc />
-        public Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
+        public async Task ExecuteAsync(IProgress<double> progress, CancellationToken cancellationToken)
         {
+            // Warm the collection cache first so per-item refreshes are served from cache.
+            _logger.LogInformation("[Encora] Auto-refresh: warming collection cache before re-fetching items");
+            await EncoraCollectionCacheRefreshTask.RefreshAsync(_httpClientFactory, _logger, null, cancellationToken).ConfigureAwait(false);
+
             var query = new InternalItemsQuery
             {
                 IncludeItemTypes = new[] { BaseItemKind.Movie, BaseItemKind.Series, BaseItemKind.Episode },
                 HasAnyProviderId = new Dictionary<string, string> { ["EncoraRecordingId"] = string.Empty },
-                Recursive = true
+                Recursive = true,
             };
 
             var items = _libraryManager.GetItemList(query);
@@ -104,11 +112,8 @@ namespace Jellyfin.Plugin.Encora.ScheduledTasks
                 };
 
                 _providerManager.QueueRefresh(items[i].Id, options, RefreshPriority.Low);
-
                 progress.Report(100.0 * (i + 1) / total);
             }
-
-            return Task.CompletedTask;
         }
     }
 }

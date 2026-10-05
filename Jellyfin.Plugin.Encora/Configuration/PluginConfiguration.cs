@@ -16,6 +16,7 @@ public class PluginConfiguration : BasePluginConfiguration
         EncoraAPIKey = string.Empty;
         StageMediaAPIKey = string.Empty;
         AutoRefreshIntervalHours = 0;
+        CollectionCacheRefreshIntervalHours = 24;
 
         EnableMovieMatching = true;
         MovieLibraryIds = new Collection<string>();
@@ -87,6 +88,12 @@ public class PluginConfiguration : BasePluginConfiguration
     ///  Gets or sets the number of hours between automatic re-refreshes of already-matched items (0 = disabled).
     /// </summary>
     public int AutoRefreshIntervalHours { get; set; }
+
+    /// <summary>
+    /// Gets or sets how often (in hours) the Encora collection cache is refreshed from /api/collection.
+    /// Defaults to 24 hours. Set to 0 to disable automatic refresh (manual-only).
+    /// </summary>
+    public int CollectionCacheRefreshIntervalHours { get; set; }
 
     // ----- Videos - Movie Library -----
 
