@@ -303,8 +303,8 @@ namespace Jellyfin.Plugin.Encora.Models
                         return;
                     }
 
-                    var avatarSize = Math.Clamp((int)(sourceBitmap.Height * 0.08), 48, 96);
-                    var borderWidth = Math.Max(2, avatarSize / 20);
+                    var avatarSize = Math.Clamp((int)(sourceBitmap.Height * 0.16), 96, 192);
+                    var borderWidth = Math.Max(3, avatarSize / 20);
                     var step = (int)(avatarSize * 0.70);
                     var marginX = avatarSize / 2;
                     var marginY = avatarSize / 2;
@@ -349,7 +349,15 @@ namespace Jellyfin.Plugin.Encora.Models
                         using var clipPath = new SKPath();
                         clipPath.AddCircle(cx, cy, r);
                         canvas.ClipPath(clipPath, SKClipOperation.Intersect, antialias: true);
-                        canvas.DrawBitmap(headshot, SKRect.Create(cx - r, cy - r, avatarSize, avatarSize));
+                        // Cover: scale to fill the circle, centered, maintaining aspect ratio
+                        float scaleX = avatarSize / (float)headshot.Width;
+                        float scaleY = avatarSize / (float)headshot.Height;
+                        float scale = Math.Max(scaleX, scaleY);
+                        float scaledW = headshot.Width * scale;
+                        float scaledH = headshot.Height * scale;
+                        float offsetX = (avatarSize - scaledW) / 2f;
+                        float offsetY = (avatarSize - scaledH) / 2f;
+                        canvas.DrawBitmap(headshot, SKRect.Create(cx - r + offsetX, cy - r + offsetY, scaledW, scaledH));
                         canvas.Restore();
                     }
 
