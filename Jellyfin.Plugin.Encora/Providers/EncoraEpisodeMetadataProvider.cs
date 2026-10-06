@@ -190,7 +190,7 @@ namespace Jellyfin.Plugin.Encora.Providers
                         if (System.IO.File.Exists(thumbPath)
                             && _libraryManager.FindByPath(info.Path, isFolder: false) is Episode existingEp)
                         {
-                            existingEp.SetImagePath(MediaBrowser.Model.Entities.ImageType.Thumb, 0, thumbPath);
+                            existingEp.SetImagePath(MediaBrowser.Model.Entities.ImageType.Thumb, thumbPath);
                             await _libraryManager.UpdateItemAsync(existingEp, existingEp.GetParent(), ItemUpdateType.ImageUpdate, cancellationToken).ConfigureAwait(false);
                         }
                     }
