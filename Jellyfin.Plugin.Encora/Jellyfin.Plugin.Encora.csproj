@@ -29,6 +29,8 @@
   <ItemGroup>
     <None Remove="Configuration\configPage.html" />
     <EmbeddedResource Include="Configuration\configPage.html" />
+    <None Remove="Configuration\encoraCastStack.js" />
+    <EmbeddedResource Include="Configuration\encoraCastStack.js" />
   </ItemGroup>
 
 </Project>
