@@ -9,6 +9,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "1.2.4.0",
+        "changelog": "- Guard all GetItemById lookups against empty Guid\n- Fix Guid.Empty crash in season cleaner, reparent episodes and guard season deletion\n- Fix episode ParentId cascade deletion and guard season deletion (1.2.3.7)\n- fix: heal orphaned episodes in SeasonMerger; add per-series lock in SeasonPatcher",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/1.2.4.0/encora-plugin_1.2.4.0.zip",
+        "checksum": "b0eb71338b1a9e456f53e9e48078a2e5",
+        "timestamp": "2026-10-06T11:41:53Z"
+      },
+      {
         "version": "1.2.3.6",
         "changelog": "- Enforce SeasonId and ParentIndexNumber from target tour season",
         "targetAbi": "10.11.0.0",
