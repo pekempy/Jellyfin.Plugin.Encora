@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -197,6 +198,7 @@ namespace Jellyfin.Plugin.Encora.Models
                 foreach (var episode in episodes)
                 {
                     episode.SetParent(keeper);
+                    episode.ParentId = keeper.Id;
                     episode.SeasonId = keeper.Id;
                     episode.SeasonName = keeper.Name;
                     episode.ParentIndexNumber = keeper.IndexNumber;
@@ -213,8 +215,11 @@ namespace Jellyfin.Plugin.Encora.Models
                     mergedEpisodeCount++;
                 }
 
-                libraryManager.DeleteItem(loser, new DeleteOptions { DeleteFileLocation = false });
-                mergedSeasonCount++;
+                if (string.IsNullOrWhiteSpace(loser.Path) || !Directory.Exists(loser.Path))
+                {
+                    libraryManager.DeleteItem(loser, new DeleteOptions { DeleteFileLocation = false });
+                    mergedSeasonCount++;
+                }
             }
 
             if (mergedEpisodeCount > 0)
