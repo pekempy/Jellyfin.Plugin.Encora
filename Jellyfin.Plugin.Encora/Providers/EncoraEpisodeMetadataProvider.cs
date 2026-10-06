@@ -690,7 +690,7 @@ namespace Jellyfin.Plugin.Encora.Providers
                             {
                                 existingEpisode.SeasonId = episode.SeasonId;
                                 existingEpisode.SeasonName = episode.SeasonName;
-                                if (_libraryManager.GetItemById(episode.SeasonId) is Season targetSeason)
+                                if (episode.SeasonId != Guid.Empty && _libraryManager.GetItemById(episode.SeasonId) is Season targetSeason)
                                 {
                                     existingEpisode.SetParent(targetSeason);
                                 }

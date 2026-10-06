@@ -162,7 +162,7 @@ namespace Jellyfin.Plugin.Encora.Providers
                     if (existingSeason.IndexNumber != season.IndexNumber)
                     {
                         existingSeason.IndexNumber = season.IndexNumber;
-                        var seriesForIndex = _libraryManager.GetItemById(existingSeason.SeriesId);
+                        var seriesForIndex = existingSeason.SeriesId != Guid.Empty ? _libraryManager.GetItemById(existingSeason.SeriesId) : null;
                         if (seriesForIndex != null)
                         {
                             await _libraryManager.UpdateItemAsync(existingSeason, seriesForIndex, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
@@ -262,7 +262,7 @@ namespace Jellyfin.Plugin.Encora.Providers
                     {
                         existingSeason.Name = tour;
                         existingSeason.IndexNumber = season.IndexNumber;
-                        var series = _libraryManager.GetItemById(existingSeason.SeriesId);
+                        var series = existingSeason.SeriesId != Guid.Empty ? _libraryManager.GetItemById(existingSeason.SeriesId) : null;
                         if (series != null)
                         {
                             _ = Task.Run(
@@ -286,7 +286,7 @@ namespace Jellyfin.Plugin.Encora.Providers
                     }
                 }
 
-                _logger.LogInformation("[Encora] ✅ Using tour override '{Tour}' for non-Encora season folder: {Path}", tour, info.Path);
+                _logger.LogInformation("[Encora] ✅ Using tour override '{Tour}' for non-encora season folder: {Path}", tour, info.Path);
                 result.HasMetadata = true;
                 result.Item = season;
                 return result;
@@ -297,7 +297,7 @@ namespace Jellyfin.Plugin.Encora.Providers
             var config = Plugin.Instance?.Configuration;
             if (config != null)
             {
-                var seriesName = (_libraryManager.FindByPath(info.Path, isFolder: true) as Season) is { } season2
+                var seriesName = (_libraryManager.FindByPath(info.Path, isFolder: true) as Season) is { } season2 && season2.SeriesId != Guid.Empty
                     ? _libraryManager.GetItemById(season2.SeriesId)?.Name ?? "Unknown Show"
                     : "Unknown Show";
                 var recordingLabel = Path.GetFileName(info.Path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));

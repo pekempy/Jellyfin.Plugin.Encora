@@ -75,7 +75,7 @@ namespace Jellyfin.Plugin.Encora.Models
                 return;
             }
 
-            var series = libraryManager.GetItemById(episode.SeriesId) as Folder;
+            var series = episode.SeriesId != Guid.Empty ? libraryManager.GetItemById(episode.SeriesId) as Folder : null;
             if (series == null)
             {
                 return;

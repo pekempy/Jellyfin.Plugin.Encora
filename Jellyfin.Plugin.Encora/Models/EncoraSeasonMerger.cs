@@ -81,7 +81,7 @@ namespace Jellyfin.Plugin.Encora.Models
                 Recursive = true
             }).OfType<Season>().ToList();
 
-            foreach (var seriesGroup in allSeasons.GroupBy(season => season.SeriesId))
+            foreach (var seriesGroup in allSeasons.Where(season => season.SeriesId != Guid.Empty).GroupBy(season => season.SeriesId))
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -170,7 +170,7 @@ namespace Jellyfin.Plugin.Encora.Models
                 }
             }
 
-            var series = libraryManager.GetItemById(seriesId);
+            var series = seriesId != Guid.Empty ? libraryManager.GetItemById(seriesId) : null;
             var scopePath = members[0].Path ?? series?.Path;
             if (string.IsNullOrWhiteSpace(scopePath) || !EncoraLibraryScope.IsPathInScope(libraryManager, scopePath, Plugin.Instance?.Configuration?.TvLibraryIds))
             {
