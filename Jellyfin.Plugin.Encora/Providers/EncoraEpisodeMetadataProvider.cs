@@ -174,7 +174,7 @@ namespace Jellyfin.Plugin.Encora.Providers
 
             if (options.GenerateThumbnail)
             {
-                await ThumbGenerator.GenerateThumbPng(_logger, _mediaEncoder, episodeDir, info.Path, options.ThumbnailSeekMinPercent, options.ThumbnailSeekMaxPercent).ConfigureAwait(false);
+                await ThumbGenerator.GenerateThumbPng(_logger, _mediaEncoder, episodeDir, info.Path, options.ThumbnailSeekMinPercent, options.ThumbnailSeekMaxPercent, isEpisode: true).ConfigureAwait(false);
 
                 if (options.OverlayCastOnThumb && !string.IsNullOrWhiteSpace(episodeDir) && capturedRecording != null)
                 {
@@ -183,7 +183,16 @@ namespace Jellyfin.Plugin.Encora.Providers
                     if (sources.Count > 0)
                     {
                         await CastThumbOverlay.OverlayAsync(
-                            _logger, episodeDir!, sources, _httpClientFactory, cancellationToken).ConfigureAwait(false);
+                            _logger, episodeDir!, info.Path, sources, _httpClientFactory, cancellationToken).ConfigureAwait(false);
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(episodeDir) && result.Item != null)
+                {
+                    var epThumbPath = Path.Combine(episodeDir, CastThumbOverlay.GetThumbFileName(info.Path));
+                    if (File.Exists(epThumbPath))
+                    {
+                        result.Item.SetImagePath(ImageType.Primary, epThumbPath);
                     }
                 }
             }
@@ -286,7 +295,7 @@ namespace Jellyfin.Plugin.Encora.Providers
 
             if (options.GenerateThumbnail)
             {
-                await ThumbGenerator.GenerateThumbPng(_logger, _mediaEncoder, episodeDir, info.Path, options.ThumbnailSeekMinPercent, options.ThumbnailSeekMaxPercent).ConfigureAwait(false);
+                await ThumbGenerator.GenerateThumbPng(_logger, _mediaEncoder, episodeDir, info.Path, options.ThumbnailSeekMinPercent, options.ThumbnailSeekMaxPercent, isEpisode: true).ConfigureAwait(false);
             }
 
             if (options.SetRandomEpisodeBackdrop)
@@ -825,6 +834,21 @@ namespace Jellyfin.Plugin.Encora.Providers
                     }
                 }
 
+                var epDir = Path.GetDirectoryName(item.Path);
+                if (!string.IsNullOrWhiteSpace(epDir))
+                {
+                    var epThumb = Path.Combine(epDir, CastThumbOverlay.GetThumbFileName(item.Path));
+                    if (File.Exists(epThumb))
+                    {
+                        if (!item.HasImage(ImageType.Primary, 0) || !string.Equals(item.GetImagePath(ImageType.Primary), epThumb, StringComparison.OrdinalIgnoreCase))
+                        {
+                            _logger.LogInformation("[Encora] [CustomProvider] Setting Episode Primary image to {ThumbPath} for {Path}", epThumb, item.Path);
+                            item.SetImagePath(ImageType.Primary, epThumb);
+                            updateType |= ItemUpdateType.ImageUpdate;
+                        }
+                    }
+                }
+
                 return updateType;
             }
 
@@ -888,15 +912,30 @@ namespace Jellyfin.Plugin.Encora.Providers
                 }
             }
 
+            var fallbackDir = Path.GetDirectoryName(item.Path);
+            if (!string.IsNullOrWhiteSpace(fallbackDir))
+            {
+                var epThumb = Path.Combine(fallbackDir, CastThumbOverlay.GetThumbFileName(item.Path));
+                if (File.Exists(epThumb))
+                {
+                    if (!item.HasImage(ImageType.Primary, 0) || !string.Equals(item.GetImagePath(ImageType.Primary), epThumb, StringComparison.OrdinalIgnoreCase))
+                    {
+                        _logger.LogInformation("[Encora] [CustomProvider] Setting Episode Primary image to {ThumbPath} for {Path}", epThumb, item.Path);
+                        item.SetImagePath(ImageType.Primary, epThumb);
+                        updateType |= ItemUpdateType.ImageUpdate;
+                    }
+                }
+            }
+
             return updateType;
         }
 
         /// <summary>
-        /// If the episode has a thumb.png and its parent series does not yet have a backdrop,
-        /// copies thumb.png to the series folder as backdrop.png.
+        /// If the episode has a thumb and its parent series does not yet have a backdrop,
+        /// copies the thumb to the series folder as backdrop.png.
         /// </summary>
         /// <param name="episodePath">The episode file path.</param>
-        /// <param name="episodeDir">The episode directory containing thumb.png.</param>
+        /// <param name="episodeDir">The episode directory containing the thumb.</param>
         private void TrySetSeriesBackdropFromEpisodeThumb(string? episodePath, string? episodeDir)
         {
             if (string.IsNullOrWhiteSpace(episodePath) || string.IsNullOrWhiteSpace(episodeDir))
@@ -906,7 +945,13 @@ namespace Jellyfin.Plugin.Encora.Providers
 
             try
             {
-                var thumbPath = Path.Combine(episodeDir, "thumb.png");
+                var thumbFileName = CastThumbOverlay.GetThumbFileName(episodePath);
+                var thumbPath = Path.Combine(episodeDir, thumbFileName);
+                if (!File.Exists(thumbPath))
+                {
+                    thumbPath = Path.Combine(episodeDir, "thumb.png");
+                }
+
                 if (!File.Exists(thumbPath))
                 {
                     return;

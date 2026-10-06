@@ -424,6 +424,33 @@ namespace Jellyfin.Plugin.Encora.Providers
                 }
             }
 
+            if (item.HasImage(ImageType.Primary, 0))
+            {
+                var currentPrimary = item.GetImagePath(ImageType.Primary);
+                if (!string.IsNullOrEmpty(currentPrimary) &&
+                    (currentPrimary.EndsWith("thumb.png", StringComparison.OrdinalIgnoreCase) ||
+                     currentPrimary.EndsWith("-thumb.png", StringComparison.OrdinalIgnoreCase)))
+                {
+                    _logger.LogInformation("[Encora] Removing episode thumbnail incorrectly set as Season Primary image: {Path}", currentPrimary);
+                    item.SetImagePath(ImageType.Primary, (string)null!);
+                    EncoraRecordingApplier.UnmarkPosterLocked(item);
+                    updated = true;
+                }
+            }
+
+            if (item.HasImage(ImageType.Thumb, 0))
+            {
+                var currentThumb = item.GetImagePath(ImageType.Thumb);
+                if (!string.IsNullOrEmpty(currentThumb) &&
+                    (currentThumb.EndsWith("thumb.png", StringComparison.OrdinalIgnoreCase) ||
+                     currentThumb.EndsWith("-thumb.png", StringComparison.OrdinalIgnoreCase)))
+                {
+                    _logger.LogInformation("[Encora] Removing episode thumbnail incorrectly set as Season Thumb image: {Path}", currentThumb);
+                    item.SetImagePath(ImageType.Thumb, (string)null!);
+                    updated = true;
+                }
+            }
+
             if ((Plugin.Instance?.Configuration?.TvFetchPoster ?? true) &&
                 !EncoraRecordingApplier.IsPosterLocked(item) &&
                 !item.HasImage(ImageType.Primary, 0) &&

@@ -26,12 +26,26 @@ namespace Jellyfin.Plugin.Encora.Models
     public static class CastThumbOverlay
     {
         private const int MaxAvatars = 6;
-        private const string BackupName = "thumb.original.png";
-        private const string ThumbName = "thumb.png";
-        private const string StateName = "thumb.overlay-state.json";
-
         private static readonly JsonSerializerOptions JsonOpts =
             new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
+        /// <summary>Returns the episode-specific thumb filename for <paramref name="mediaPath"/>.</summary>
+        /// <param name="mediaPath">Full path to the video file.</param>
+        /// <returns>Filename like <c>Episode Title-thumb.png</c>.</returns>
+        public static string GetThumbFileName(string mediaPath)
+            => Path.GetFileNameWithoutExtension(mediaPath) + "-thumb.png";
+
+        /// <summary>Returns the backup filename for the clean original thumb.</summary>
+        /// <param name="mediaPath">Full path to the video file.</param>
+        /// <returns>Filename like <c>Episode Title-thumb.original.png</c>.</returns>
+        public static string GetBackupFileName(string mediaPath)
+            => Path.GetFileNameWithoutExtension(mediaPath) + "-thumb.original.png";
+
+        /// <summary>Returns the state filename for <paramref name="mediaPath"/>.</summary>
+        /// <param name="mediaPath">Full path to the video file.</param>
+        /// <returns>Filename like <c>Episode Title-thumb.overlay-state.json</c>.</returns>
+        public static string GetStateFileName(string mediaPath)
+            => Path.GetFileNameWithoutExtension(mediaPath) + "-thumb.overlay-state.json";
 
         // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -108,11 +122,12 @@ namespace Jellyfin.Plugin.Encora.Models
 
         /// <summary>
         /// Loads headshot images (local file or HTTP fallback), composites them as a circular
-        /// avatar stack onto thumb.png, and writes a <c>thumb.overlay-state.json</c> sidecar.
-        /// No-ops when no sources have any image or when thumb.png does not exist yet.
+        /// avatar stack onto the episode's thumbnail, and writes a state sidecar.
+        /// No-ops when no sources have any image or when the thumb does not exist yet.
         /// </summary>
         /// <param name="logger">Logger for diagnostics.</param>
-        /// <param name="episodeDir">Directory containing the episode's thumb.png.</param>
+        /// <param name="episodeDir">Directory containing the episode's thumb.</param>
+        /// <param name="mediaPath">Path to the video file.</param>
         /// <param name="sources">Ordered headshot sources (local-first, URL fallback).</param>
         /// <param name="httpClientFactory">Used only when a source has no local path.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
@@ -120,6 +135,7 @@ namespace Jellyfin.Plugin.Encora.Models
         public static async Task OverlayAsync(
             ILogger logger,
             string episodeDir,
+            string mediaPath,
             IReadOnlyList<HeadshotSource> sources,
             IHttpClientFactory httpClientFactory,
             CancellationToken cancellationToken)
@@ -130,8 +146,101 @@ namespace Jellyfin.Plugin.Encora.Models
                 return;
             }
 
-            var thumbPath = Path.Combine(episodeDir, ThumbName);
-            var backupPath = Path.Combine(episodeDir, BackupName);
+            var thumbName = GetThumbFileName(mediaPath);
+            var backupName = GetBackupFileName(mediaPath);
+            var stateName = GetStateFileName(mediaPath);
+
+            var thumbPath = Path.Combine(episodeDir, thumbName);
+            var backupPath = Path.Combine(episodeDir, backupName);
+            var statePath = Path.Combine(episodeDir, stateName);
+
+            // Migrate legacy files if new ones do not exist yet
+            var legacyThumb = Path.Combine(episodeDir, "thumb.png");
+            var legacyBackup = Path.Combine(episodeDir, "thumb.original.png");
+            var legacyState = Path.Combine(episodeDir, "thumb.overlay-state.json");
+
+            if (!File.Exists(thumbPath) && File.Exists(legacyThumb))
+            {
+                try
+                {
+                    File.Move(legacyThumb, thumbPath, overwrite: true);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "[Encora] [CastOverlay] Could not migrate legacy thumb.png to {Path}", thumbPath);
+                }
+            }
+
+            if (!File.Exists(backupPath) && File.Exists(legacyBackup))
+            {
+                try
+                {
+                    File.Move(legacyBackup, backupPath, overwrite: true);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "[Encora] [CastOverlay] Could not migrate legacy thumb.original.png to {Path}", backupPath);
+                }
+            }
+
+            if (!File.Exists(statePath) && File.Exists(legacyState))
+            {
+                try
+                {
+                    File.Move(legacyState, statePath, overwrite: true);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "[Encora] [CastOverlay] Could not migrate legacy state to {Path}", statePath);
+                }
+            }
+
+            // Remove legacy files from folder so Jellyfin never treats them as Season art
+            if (File.Exists(legacyThumb))
+            {
+                try
+                {
+                    File.Delete(legacyThumb);
+                }
+                catch
+                {
+                }
+            }
+
+            if (File.Exists(legacyBackup))
+            {
+                try
+                {
+                    File.Delete(legacyBackup);
+                }
+                catch
+                {
+                }
+            }
+
+            if (File.Exists(legacyState))
+            {
+                try
+                {
+                    File.Delete(legacyState);
+                }
+                catch
+                {
+                }
+            }
+
+            // Remove any {name}-thumb.jpg so Jellyfin doesn't prefer it over {name}-thumb.png
+            var legacyJpg = Path.Combine(episodeDir, Path.GetFileNameWithoutExtension(mediaPath) + "-thumb.jpg");
+            if (File.Exists(legacyJpg))
+            {
+                try
+                {
+                    File.Delete(legacyJpg);
+                }
+                catch
+                {
+                }
+            }
 
             if (!File.Exists(thumbPath) && !File.Exists(backupPath))
             {
@@ -201,7 +310,7 @@ namespace Jellyfin.Plugin.Encora.Models
             try
             {
                 await CompositeAsync(logger, sourcePath, thumbPath, bitmaps, cancellationToken).ConfigureAwait(false);
-                await SaveOverlayStateAsync(episodeDir, cancellationToken).ConfigureAwait(false);
+                await SaveOverlayStateAsync(episodeDir, mediaPath, cancellationToken).ConfigureAwait(false);
                 logger.LogInformation(
                     "[Encora] [CastOverlay] ✅ Overlaid {Count} cast avatars onto {Path}",
                     bitmaps.Count,
@@ -217,7 +326,67 @@ namespace Jellyfin.Plugin.Encora.Models
         }
 
         /// <summary>
-        /// Returns true when <c>thumb.overlay-state.json</c> is absent or older than
+        /// Backward-compatible overload when mediaPath is omitted.
+        /// </summary>
+        /// <param name="logger">Logger instance.</param>
+        /// <param name="episodeDir">Directory containing the episode's thumb.</param>
+        /// <param name="sources">Ordered headshot sources.</param>
+        /// <param name="httpClientFactory">HTTP client factory.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A task representing the asynchronous operation.</returns>
+        public static Task OverlayAsync(
+            ILogger logger,
+            string episodeDir,
+            IReadOnlyList<HeadshotSource> sources,
+            IHttpClientFactory httpClientFactory,
+            CancellationToken cancellationToken)
+        {
+            var videoFile = Directory.EnumerateFiles(episodeDir, "*.*", SearchOption.TopDirectoryOnly)
+                .FirstOrDefault(f => !f.EndsWith(".png", StringComparison.OrdinalIgnoreCase) &&
+                                     !f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) &&
+                                     !f.EndsWith(".nfo", StringComparison.OrdinalIgnoreCase) &&
+                                     !f.EndsWith(".json", StringComparison.OrdinalIgnoreCase)) ?? Path.Combine(episodeDir, "thumb.png");
+            return OverlayAsync(logger, episodeDir, videoFile, sources, httpClientFactory, cancellationToken);
+        }
+
+        /// <summary>
+        /// Returns true when state sidecar is absent or older than
+        /// <paramref name="staleness"/>, indicating a StageMedia re-check is due.
+        /// </summary>
+        /// <param name="episodeDir">Episode directory to check.</param>
+        /// <param name="mediaPath">Media path to check state for.</param>
+        /// <param name="staleness">Maximum age before state is considered stale.</param>
+        /// <returns>True when a re-check is warranted.</returns>
+        public static bool IsOverlayStale(string episodeDir, string mediaPath, TimeSpan staleness)
+        {
+            var statePath = Path.Combine(episodeDir, GetStateFileName(mediaPath));
+            if (!File.Exists(statePath))
+            {
+                var legacyState = Path.Combine(episodeDir, "thumb.overlay-state.json");
+                if (File.Exists(legacyState))
+                {
+                    statePath = legacyState;
+                }
+                else
+                {
+                    return true;
+                }
+            }
+
+            try
+            {
+                var json = File.ReadAllText(statePath);
+                var state = JsonSerializer.Deserialize<OverlayState>(json, JsonOpts);
+                return state == null || (DateTime.UtcNow - state.LastCheckedUtc) > staleness;
+            }
+            catch
+            {
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// Returns true when <c>thumb.overlay-state.json</c> or any state sidecar is absent or older than
         /// <paramref name="staleness"/>, indicating a StageMedia re-check is due.
         /// </summary>
         /// <param name="episodeDir">Episode directory to check.</param>
@@ -225,15 +394,33 @@ namespace Jellyfin.Plugin.Encora.Models
         /// <returns>True when a re-check is warranted.</returns>
         public static bool IsOverlayStale(string episodeDir, TimeSpan staleness)
         {
-            var statePath = Path.Combine(episodeDir, StateName);
-            if (!File.Exists(statePath))
+            var stateFiles = Directory.EnumerateFiles(episodeDir, "*-thumb.overlay-state.json").ToList();
+            if (stateFiles.Count > 0)
+            {
+                return stateFiles.Any(f =>
+                {
+                    try
+                    {
+                        var json = File.ReadAllText(f);
+                        var state = JsonSerializer.Deserialize<OverlayState>(json, JsonOpts);
+                        return state == null || (DateTime.UtcNow - state.LastCheckedUtc) > staleness;
+                    }
+                    catch
+                    {
+                        return true;
+                    }
+                });
+            }
+
+            var legacyState = Path.Combine(episodeDir, "thumb.overlay-state.json");
+            if (!File.Exists(legacyState))
             {
                 return true;
             }
 
             try
             {
-                var json = File.ReadAllText(statePath);
+                var json = File.ReadAllText(legacyState);
                 var state = JsonSerializer.Deserialize<OverlayState>(json, JsonOpts);
                 return state == null || (DateTime.UtcNow - state.LastCheckedUtc) > staleness;
             }
@@ -273,11 +460,24 @@ namespace Jellyfin.Plugin.Encora.Models
 
         /// <summary>Writes or updates the overlay state sidecar with the current UTC timestamp.</summary>
         /// <param name="episodeDir">Episode directory to write the sidecar into.</param>
+        /// <param name="mediaPath">Media path to write sidecar for.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>A task representing the asynchronous write.</returns>
+        public static async Task SaveOverlayStateAsync(string episodeDir, string mediaPath, CancellationToken cancellationToken)
+        {
+            var statePath = Path.Combine(episodeDir, GetStateFileName(mediaPath));
+            var state = new OverlayState { LastCheckedUtc = DateTime.UtcNow };
+            var json = JsonSerializer.Serialize(state, JsonOpts);
+            await File.WriteAllTextAsync(statePath, json, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>Writes or updates the legacy overlay state sidecar with the current UTC timestamp.</summary>
+        /// <param name="episodeDir">Episode directory to write the sidecar into.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>A task representing the asynchronous write.</returns>
         public static async Task SaveOverlayStateAsync(string episodeDir, CancellationToken cancellationToken)
         {
-            var statePath = Path.Combine(episodeDir, StateName);
+            var statePath = Path.Combine(episodeDir, "thumb.overlay-state.json");
             var state = new OverlayState { LastCheckedUtc = DateTime.UtcNow };
             var json = JsonSerializer.Serialize(state, JsonOpts);
             await File.WriteAllTextAsync(statePath, json, cancellationToken).ConfigureAwait(false);

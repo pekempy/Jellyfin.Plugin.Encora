@@ -97,9 +97,15 @@ namespace Jellyfin.Plugin.Encora.ScheduledTasks
                 .Where(ep =>
                 {
                     var dir = Path.GetDirectoryName(ep.Path);
-                    return !string.IsNullOrWhiteSpace(dir)
-                        && File.Exists(Path.Combine(dir, "thumb.original.png"))
-                        && CastThumbOverlay.IsOverlayStale(dir, StalenessThreshold);
+                    if (string.IsNullOrWhiteSpace(dir))
+                    {
+                        return false;
+                    }
+
+                    var backup = Path.Combine(dir, CastThumbOverlay.GetBackupFileName(ep.Path));
+                    var legacyBackup = Path.Combine(dir, "thumb.original.png");
+                    return (File.Exists(backup) || File.Exists(legacyBackup))
+                        && CastThumbOverlay.IsOverlayStale(dir, ep.Path, StalenessThreshold);
                 })
                 .ToList();
 
@@ -158,7 +164,7 @@ namespace Jellyfin.Plugin.Encora.ScheduledTasks
 
             if (stageMedia == null || stageMedia.Count == 0)
             {
-                await CastThumbOverlay.SaveOverlayStateAsync(dir, cancellationToken).ConfigureAwait(false);
+                await CastThumbOverlay.SaveOverlayStateAsync(dir, episode.Path, cancellationToken).ConfigureAwait(false);
                 return;
             }
 
@@ -220,7 +226,7 @@ namespace Jellyfin.Plugin.Encora.ScheduledTasks
                 if (sources.Count > 0)
                 {
                     await CastThumbOverlay.OverlayAsync(
-                        _logger, dir, sources, _httpClientFactory, cancellationToken).ConfigureAwait(false);
+                        _logger, dir, episode.Path, sources, _httpClientFactory, cancellationToken).ConfigureAwait(false);
 
                     _logger.LogInformation(
                         "[Encora] [CastImageRefresh] Recomposited thumbnail for {Episode}", episode.Name);
@@ -228,7 +234,7 @@ namespace Jellyfin.Plugin.Encora.ScheduledTasks
             }
             else
             {
-                await CastThumbOverlay.SaveOverlayStateAsync(dir, cancellationToken).ConfigureAwait(false);
+                await CastThumbOverlay.SaveOverlayStateAsync(dir, episode.Path, cancellationToken).ConfigureAwait(false);
             }
         }
     }

@@ -25,13 +25,68 @@ namespace Jellyfin.Plugin.Encora.Models
         /// <param name="mediaPath">path of the media file to extract the thumb from.</param>
         /// <param name="seekMinPercent">minimum percentage into the video to seek (0-100).</param>
         /// <param name="seekMaxPercent">maximum percentage into the video to seek (0-100).</param>
+        /// <param name="isEpisode">whether this thumbnail is for an episode (uses {videoName}-thumb.png).</param>
         /// <returns name="Task">Task.</returns>
-        public static async Task GenerateThumbPng(ILogger logger, IMediaEncoder mediaEncoder, string? movieDir, string mediaPath, int seekMinPercent = 15, int seekMaxPercent = 60)
+        public static async Task GenerateThumbPng(
+            ILogger logger,
+            IMediaEncoder mediaEncoder,
+            string? movieDir,
+            string mediaPath,
+            int seekMinPercent = 15,
+            int seekMaxPercent = 60,
+            bool isEpisode = false)
         {
-            // Extract thumb.png from the media file
+            // Extract thumbnail from the media file
             if (!string.IsNullOrWhiteSpace(movieDir))
             {
-                var thumbPath = Path.Combine(movieDir, "thumb.png");
+                var thumbFileName = isEpisode
+                    ? CastThumbOverlay.GetThumbFileName(mediaPath)
+                    : "thumb.png";
+                var thumbPath = Path.Combine(movieDir, thumbFileName);
+
+                if (isEpisode)
+                {
+                    // Migration: if legacy thumb.png exists, migrate it to the episode-specific filename
+                    var legacyThumbPath = Path.Combine(movieDir, "thumb.png");
+                    if (!File.Exists(thumbPath) && File.Exists(legacyThumbPath))
+                    {
+                        try
+                        {
+                            File.Move(legacyThumbPath, thumbPath, overwrite: true);
+                            logger.LogInformation("[Encora] [Thumb] Migrated legacy thumb.png to {ThumbPath}", thumbPath);
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogWarning(ex, "[Encora] [Thumb] Could not migrate legacy thumb.png to {ThumbPath}", thumbPath);
+                        }
+                    }
+
+                    // Remove legacy thumb.png so Jellyfin never treats it as Season art
+                    if (File.Exists(legacyThumbPath))
+                    {
+                        try
+                        {
+                            File.Delete(legacyThumbPath);
+                        }
+                        catch
+                        {
+                        }
+                    }
+
+                    // Remove any {name}-thumb.jpg so Jellyfin doesn't prefer it over {name}-thumb.png
+                    var legacyJpg = Path.Combine(movieDir, Path.GetFileNameWithoutExtension(mediaPath) + "-thumb.jpg");
+                    if (File.Exists(legacyJpg))
+                    {
+                        try
+                        {
+                            File.Delete(legacyJpg);
+                        }
+                        catch
+                        {
+                        }
+                    }
+                }
+
                 if (!File.Exists(thumbPath))
                 {
                     try

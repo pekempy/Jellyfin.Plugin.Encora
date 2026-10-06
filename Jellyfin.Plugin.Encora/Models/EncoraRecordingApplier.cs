@@ -541,6 +541,15 @@ namespace Jellyfin.Plugin.Encora.Models
         }
 
         /// <summary>
+        /// Removes the poster locked mark from an item so it can receive a proper poster.
+        /// </summary>
+        /// <param name="item">The item to unlock.</param>
+        public static void UnmarkPosterLocked(BaseItem item)
+        {
+            item.ProviderIds.Remove(PosterLockedProviderIdKey);
+        }
+
+        /// <summary>
         /// Fetches the list of subtitles Encora has available for a recording. Used by
         /// <see cref="Providers.EncoraSubtitleProvider"/> so subtitles are exposed through Jellyfin's
         /// standard subtitle search/download flow rather than downloaded automatically during a metadata
