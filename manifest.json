@@ -9,6 +9,14 @@
     "category": "General",
     "versions": [
       {
+        "version": "1.2.4.1",
+        "changelog": "- fix: name episode thumbs {video}-thumb.png, migrate legacy files, and prevent season pollution\n- fix: remove SetImagePath+UpdateItemAsync that was overwriting season posters\n- fix: correct SetImagePath call signature (2-arg)\n- fix: double avatar size, cover-crop headshots, force Jellyfin thumb cache bust\n- feat: StageMedia fallback for overlay; 48h headshot staleness checker task\n- refactor: overlay uses Jellyfin-cached person images instead of StageMedia HTTP\n- fix: add TvOverlayCastOnThumb to EncoraFields.checkbox so setting actually saves\n- feat: overlay cast avatar stack on episode thumbnails (TV setting)\n- feat: cast avatar stack for Theatre library (web UI)\n- Add TV layout note to 1.2.4.0 changelog in manifest",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/pekempy/Jellyfin.Plugin.Encora/releases/download/1.2.4.1/encora-plugin_1.2.4.1.zip",
+        "checksum": "1817eb34a42d4432be0dee05a4b5890b",
+        "timestamp": "2026-10-06T14:15:01Z"
+      },
+      {
         "version": "1.2.4.0",
         "changelog": "TV show libraries in Jellyfin now require Show/Tour/Episodes folders (e.g. Show/Tour/[recording folder]/file.ext).\n\n- Guard all GetItemById lookups against empty Guid\n- Fix Guid.Empty crash in season cleaner, reparent episodes and guard season deletion\n- Fix episode ParentId cascade deletion and guard season deletion (1.2.3.7)\n- fix: heal orphaned episodes in SeasonMerger; add per-series lock in SeasonPatcher",
         "targetAbi": "10.11.0.0",
