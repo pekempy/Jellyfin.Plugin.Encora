@@ -124,6 +124,8 @@ namespace Jellyfin.Plugin.Encora.Providers
 
             var episodeDir = Path.GetDirectoryName(info.Path);
             var options = BuildOptions();
+            EncoraRecording? capturedRecording = null;
+            System.Collections.ObjectModel.Collection<StageMediaPerformer>? capturedHeadshots = null;
 
             try
             {
@@ -160,8 +162,8 @@ namespace Jellyfin.Plugin.Encora.Providers
                     EncoraCastMember.MapCastToResult(result, recording.Cast, headshots, recording.Master, options.AddMasterDirector);
                 }
 
-                var seasonTitleFormat = Plugin.Instance?.Configuration?.TvSeasonTitleFormat ?? "{tour}";
-                await EncoraSeasonPatcher.PatchParentSeasonAsync(_libraryManager, _logger, info.Path, recording, seasonTitleFormat, cancellationToken).ConfigureAwait(false);
+                capturedRecording = recording;
+                capturedHeadshots = headshots;
                 SpawnPostDelayEpisodeUpdate(info.Path, episode);
             }
             catch (Exception ex)
@@ -173,6 +175,15 @@ namespace Jellyfin.Plugin.Encora.Providers
             if (options.GenerateThumbnail)
             {
                 await ThumbGenerator.GenerateThumbPng(_logger, _mediaEncoder, episodeDir, info.Path, options.ThumbnailSeekMinPercent, options.ThumbnailSeekMaxPercent).ConfigureAwait(false);
+
+                if (options.OverlayCastOnThumb && !string.IsNullOrWhiteSpace(episodeDir) && capturedRecording != null)
+                {
+                    var headshotUrls = CastThumbOverlay.GetHeadshotUrls(capturedRecording.Cast, capturedHeadshots);
+                    if (headshotUrls.Count > 0)
+                    {
+                        await CastThumbOverlay.OverlayAsync(_httpClientFactory, _logger, episodeDir!, headshotUrls, cancellationToken).ConfigureAwait(false);
+                    }
+                }
             }
 
             if (options.SetRandomEpisodeBackdrop)
@@ -206,6 +217,7 @@ namespace Jellyfin.Plugin.Encora.Providers
                 SetRandomEpisodeBackdrop = config?.TvSetRandomEpisodeBackdrop ?? true,
                 ThumbnailSeekMinPercent = config?.TvThumbnailSeekMinPercent ?? 15,
                 ThumbnailSeekMaxPercent = config?.TvThumbnailSeekMaxPercent ?? 60,
+                OverlayCastOnThumb = config?.TvOverlayCastOnThumb ?? false,
             };
         }
 

@@ -54,6 +54,7 @@ public class PluginConfiguration : BasePluginConfiguration
         TvSetRandomEpisodeBackdrop = true;
         TvThumbnailSeekMinPercent = 15;
         TvThumbnailSeekMaxPercent = 60;
+        TvOverlayCastOnThumb = false;
 
         EnableAudioMatching = false;
         AudioLibraryIds = new Collection<string>();
@@ -278,6 +279,13 @@ public class PluginConfiguration : BasePluginConfiguration
     ///  Gets or sets the maximum percentage into the video to seek when generating a thumbnail, for TV libraries.
     /// </summary>
     public int TvThumbnailSeekMaxPercent { get; set; }
+
+    /// <summary>
+    ///  Gets or sets a value indicating whether cast headshots should be composited
+    ///  onto the generated thumb.png as a small avatar stack (max 6). The original
+    ///  thumb is preserved as thumb.original.png before any overlay is applied.
+    /// </summary>
+    public bool TvOverlayCastOnThumb { get; set; }
 
     // ----- Audios - Music Library -----
 

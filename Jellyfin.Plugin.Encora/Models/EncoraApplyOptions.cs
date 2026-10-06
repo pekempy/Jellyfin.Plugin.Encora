@@ -75,5 +75,12 @@ namespace Jellyfin.Plugin.Encora.Models
         /// Gets or sets the maximum percentage into the video to seek when generating a thumbnail.
         /// </summary>
         public int ThumbnailSeekMaxPercent { get; set; } = 60;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether cast headshots from StageMedia should be
+        /// composited as an overlapping avatar stack onto the generated thumb.png. The original
+        /// thumb is preserved as thumb.original.png before any overlay is applied.
+        /// </summary>
+        public bool OverlayCastOnThumb { get; set; }
     }
 }

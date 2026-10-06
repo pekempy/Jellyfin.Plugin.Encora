@@ -854,6 +854,18 @@
                                     </div>
                                     <div class="fieldDescription">The thumbnail is taken at a random point within this range.</div>
                                 </div>
+                                <div class="inputContainer">
+                                    <label class="inputLabel inputLabelUnfocused" for="TvOverlayCastOnThumb">Overlay cast on thumbnail</label>
+                                    <label>
+                                        <input id="TvOverlayCastOnThumb" name="TvOverlayCastOnThumb" type="checkbox" is="emby-checkbox" />
+                                        <span>Composite cast headshots (up to 6) as an avatar stack onto thumb.png</span>
+                                    </label>
+                                    <div class="fieldDescription">
+                                        Requires StageMedia headshots to be available. The original thumb is backed up as <code>thumb.original.png</code>
+                                        before the first overlay, so it can always be re-applied cleanly. Works on all clients since it modifies the image file directly.
+                                    </div>
+                                </div>
+
                                 </div>
 
                                 <h2 class="sectionTitle encoraCollapsibleHeader encoraExpanded">Non-Encora Recordings Needing a Tour</h2>

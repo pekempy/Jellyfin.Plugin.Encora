@@ -18,6 +18,8 @@
     <PackageReference Include="Jellyfin.Model" Version="10.11.11" />
     <PackageReference Include="Jellyfin.Sdk" Version="2024.10.28" />
     <PackageReference Include="MediaBrowser.Common" Version="4.8.11" />
+    <PackageReference Include="SkiaSharp" Version="2.88.9" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="2.88.9" />
   </ItemGroup>
 
   <ItemGroup>
@@ -29,8 +31,6 @@
   <ItemGroup>
     <None Remove="Configuration\configPage.html" />
     <EmbeddedResource Include="Configuration\configPage.html" />
-    <None Remove="Configuration\encoraCastStack.js" />
-    <EmbeddedResource Include="Configuration\encoraCastStack.js" />
   </ItemGroup>
 
 </Project>
