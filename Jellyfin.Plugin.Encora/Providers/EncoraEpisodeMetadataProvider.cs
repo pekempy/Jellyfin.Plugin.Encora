@@ -125,6 +125,7 @@ namespace Jellyfin.Plugin.Encora.Providers
             var episodeDir = Path.GetDirectoryName(info.Path);
             var options = BuildOptions();
             EncoraRecording? capturedRecording = null;
+            System.Collections.ObjectModel.Collection<StageMediaPerformer>? capturedHeadshots = null;
 
             try
             {
@@ -162,6 +163,7 @@ namespace Jellyfin.Plugin.Encora.Providers
                 }
 
                 capturedRecording = recording;
+                capturedHeadshots = headshots;
                 SpawnPostDelayEpisodeUpdate(info.Path, episode);
             }
             catch (Exception ex)
@@ -176,13 +178,12 @@ namespace Jellyfin.Plugin.Encora.Providers
 
                 if (options.OverlayCastOnThumb && !string.IsNullOrWhiteSpace(episodeDir) && capturedRecording != null)
                 {
-                    // Use Jellyfin's own cached person images — no StageMedia traffic.
-                    // Falls back silently to a no-op on a first-ever refresh before Jellyfin
-                    // has downloaded the headshots; works fully on any subsequent refresh.
-                    var localPaths = CastThumbOverlay.GetLocalHeadshotPaths(capturedRecording.Cast, _libraryManager);
-                    if (localPaths.Count > 0)
+                    var sources = CastThumbOverlay.GetHeadshotSources(
+                        capturedRecording.Cast, _libraryManager, capturedHeadshots);
+                    if (sources.Count > 0)
                     {
-                        await CastThumbOverlay.OverlayAsync(_logger, episodeDir!, localPaths, cancellationToken).ConfigureAwait(false);
+                        await CastThumbOverlay.OverlayAsync(
+                            _logger, episodeDir!, sources, _httpClientFactory, cancellationToken).ConfigureAwait(false);
                     }
                 }
             }
