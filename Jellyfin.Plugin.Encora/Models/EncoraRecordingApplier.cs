@@ -277,6 +277,11 @@ namespace Jellyfin.Plugin.Encora.Models
                 return headshots;
             }
 
+            if (!StageMediaCircuitBreaker.IsAvailable(logger))
+            {
+                return headshots;
+            }
+
             var actorIdsList = actorIds?.ToArray();
             var actorIdsParam = actorIdsList != null && actorIdsList.Length > 0
                 ? string.Join(",", actorIdsList) : "1";
@@ -286,10 +291,12 @@ namespace Jellyfin.Plugin.Encora.Models
                 logger.LogInformation("[Encora] Fetching StageMedia images for ShowId {ShowId} with ActorIds {ActorIds}", showId, actorIdsParam);
                 var stageMediaUrl = $"https://stagemedia.me/api/images?show_id={showId}&actor_ids={actorIdsParam}";
                 var stageMediaClient = httpClientFactory.CreateClient();
+                stageMediaClient.Timeout = TimeSpan.FromSeconds(15);
                 stageMediaClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", stageMediaApiKey);
                 stageMediaClient.DefaultRequestHeaders.UserAgent.ParseAdd("JellyfinAgent/0.1");
 
                 var stageMediaResponse = await stageMediaClient.GetAsync(stageMediaUrl, cancellationToken).ConfigureAwait(false);
+                StageMediaCircuitBreaker.RecordResponse(logger, stageMediaResponse);
                 stageMediaResponse.EnsureSuccessStatusCode();
                 var stageMediaJson = await stageMediaResponse.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 var images = JsonSerializer.Deserialize<StageMediaImages>(stageMediaJson);
@@ -301,6 +308,7 @@ namespace Jellyfin.Plugin.Encora.Models
                     {
                         var posterUrl = images.Posters[0];
                         var posterResponse = await stageMediaClient.GetAsync(posterUrl, cancellationToken).ConfigureAwait(false);
+                        StageMediaCircuitBreaker.RecordResponse(logger, posterResponse);
                         posterResponse.EnsureSuccessStatusCode();
                         var posterBytes = await posterResponse.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
                         await File.WriteAllBytesAsync(posterDestinationPath, posterBytes, cancellationToken).ConfigureAwait(false);
@@ -323,6 +331,7 @@ namespace Jellyfin.Plugin.Encora.Models
             }
             catch (Exception ex)
             {
+                StageMediaCircuitBreaker.RecordException(logger, ex);
                 logger.LogWarning(ex, "[Encora] Could not download and save StageMedia poster for ShowId {ShowId}", showId);
             }
 

@@ -85,8 +85,14 @@ namespace Jellyfin.Plugin.Encora.Providers
                 return Enumerable.Empty<RemoteImageInfo>();
             }
 
+            if (!StageMediaCircuitBreaker.IsAvailable(_logger))
+            {
+                return Enumerable.Empty<RemoteImageInfo>();
+            }
+
             var url = $"https://stagemedia.me/api/images?show_id={showId}&actor_ids=1";
             var client = _httpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromSeconds(15);
 
             var stageMediaApiKey = Plugin.Instance?.Configuration?.StageMediaAPIKey;
             if (string.IsNullOrWhiteSpace(stageMediaApiKey))
@@ -102,6 +108,7 @@ namespace Jellyfin.Plugin.Encora.Providers
             {
                 var response = await client.GetAsync(url, cancellationToken).ConfigureAwait(false);
                 _logger.LogInformation("[Encora] [StageMedia] {Url} -> HTTP {StatusCode}", url, (int)response.StatusCode);
+                StageMediaCircuitBreaker.RecordResponse(_logger, response);
                 response.EnsureSuccessStatusCode();
                 var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 var images = JsonSerializer.Deserialize<StageMediaImages>(json);
@@ -126,6 +133,7 @@ namespace Jellyfin.Plugin.Encora.Providers
             }
             catch (System.Exception ex)
             {
+                StageMediaCircuitBreaker.RecordException(_logger, ex);
                 _logger.LogError(ex, "[Encora] [StageMedia] GetImages failed for {ItemName}", item.Name);
                 return Enumerable.Empty<RemoteImageInfo>();
             }

@@ -79,6 +79,11 @@ namespace Jellyfin.Plugin.Encora.ScheduledTasks
                 return;
             }
 
+            if (!StageMediaCircuitBreaker.IsAvailable(_logger))
+            {
+                return;
+            }
+
             var apiKey = config.EncoraAPIKey;
             if (string.IsNullOrWhiteSpace(apiKey))
             {
@@ -121,11 +126,18 @@ namespace Jellyfin.Plugin.Encora.ScheduledTasks
             }
 
             var http = _httpClientFactory.CreateClient();
+            http.Timeout = TimeSpan.FromSeconds(15);
             int done = 0;
 
             foreach (var episode in candidates)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+
+                if (!StageMediaCircuitBreaker.IsAvailable(_logger))
+                {
+                    _logger.LogInformation("[Encora] [CastImageRefresh] Aborting remaining episodes — StageMedia circuit breaker tripped.");
+                    break;
+                }
 
                 var dir = Path.GetDirectoryName(episode.Path)!;
                 var encoraId = episode.GetProviderId("EncoraRecordingId");
@@ -197,8 +209,13 @@ namespace Jellyfin.Plugin.Encora.ScheduledTasks
                     continue;
                 }
 
+                if (!StageMediaCircuitBreaker.IsAvailable(_logger))
+                {
+                    break;
+                }
+
                 var newBytes = await CastThumbOverlay.FetchIfChangedAsync(
-                    http, imageInfo.Path, sm.Url, cancellationToken).ConfigureAwait(false);
+                    http, imageInfo.Path, sm.Url, _logger, cancellationToken).ConfigureAwait(false);
 
                 if (newBytes != null)
                 {

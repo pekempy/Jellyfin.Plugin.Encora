@@ -279,11 +279,13 @@ namespace Jellyfin.Plugin.Encora.Models
                     }
                 }
 
-                if (bmp == null && src.RemoteUrl != null)
+                if (bmp == null && src.RemoteUrl != null && StageMediaCircuitBreaker.IsAvailable(logger))
                 {
                     try
                     {
-                        var bytes = await http.GetByteArrayAsync(new Uri(src.RemoteUrl), cancellationToken).ConfigureAwait(false);
+                        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                        cts.CancelAfter(TimeSpan.FromSeconds(15));
+                        var bytes = await http.GetByteArrayAsync(new Uri(src.RemoteUrl), cts.Token).ConfigureAwait(false);
                         bmp = SKBitmap.Decode(bytes);
                         if (bmp != null)
                         {
@@ -292,6 +294,7 @@ namespace Jellyfin.Plugin.Encora.Models
                     }
                     catch (Exception ex)
                     {
+                        StageMediaCircuitBreaker.RecordException(logger, ex);
                         logger.LogDebug(ex, "[Encora] [CastOverlay] StageMedia fallback failed for {Name}", src.PerformerName);
                     }
                 }
@@ -437,25 +440,45 @@ namespace Jellyfin.Plugin.Encora.Models
         /// <param name="http">HTTP client for the download.</param>
         /// <param name="localPath">Path to the currently cached local image.</param>
         /// <param name="performerUrl">Current StageMedia URL for this performer.</param>
+        /// <param name="logger">Logger for diagnostics.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>The downloaded bytes when the remote image differs; null when unchanged or on error.</returns>
         public static async Task<byte[]?> FetchIfChangedAsync(
             HttpClient http,
             string localPath,
             string performerUrl,
+            ILogger logger,
             CancellationToken cancellationToken)
         {
             try
             {
-                var remoteBytes = await http.GetByteArrayAsync(new Uri(performerUrl), cancellationToken).ConfigureAwait(false);
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(TimeSpan.FromSeconds(15));
+                var remoteBytes = await http.GetByteArrayAsync(new Uri(performerUrl), cts.Token).ConfigureAwait(false);
                 var remoteHash = SHA256.HashData(remoteBytes);
                 var localHash = SHA256.HashData(await File.ReadAllBytesAsync(localPath, cancellationToken).ConfigureAwait(false));
                 return remoteHash.SequenceEqual(localHash) ? null : remoteBytes;
             }
-            catch
+            catch (Exception ex)
             {
+                StageMediaCircuitBreaker.RecordException(logger, ex);
                 return null;
             }
+        }
+
+        /// <summary>Backward compatible overload without logger.</summary>
+        /// <param name="http">HTTP client for the download.</param>
+        /// <param name="localPath">Path to the currently cached local image.</param>
+        /// <param name="performerUrl">Current StageMedia URL for this performer.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>The downloaded bytes when the remote image differs; null when unchanged or on error.</returns>
+        public static Task<byte[]?> FetchIfChangedAsync(
+            HttpClient http,
+            string localPath,
+            string performerUrl,
+            CancellationToken cancellationToken)
+        {
+            return FetchIfChangedAsync(http, localPath, performerUrl, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, cancellationToken);
         }
 
         /// <summary>Writes or updates the overlay state sidecar with the current UTC timestamp.</summary>
