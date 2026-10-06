@@ -1,20 +1,23 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
-using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using Jellyfin.Data.Enums;
+using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller.Library;
+using MediaBrowser.Model.Entities;
 using Microsoft.Extensions.Logging;
 using SkiaSharp;
 
 namespace Jellyfin.Plugin.Encora.Models
 {
     /// <summary>
-    /// Composites cast headshots as an overlapping avatar stack onto a generated thumb.png.
-    /// The original thumb is preserved as thumb.original.png before the first overlay is applied,
-    /// so re-running always composites onto the clean original.
+    /// Composites cast headshots as an overlapping avatar stack onto a generated thumb.png,
+    /// reading headshots from Jellyfin's own local people-image cache rather than re-fetching
+    /// from StageMedia. The original thumb is preserved as thumb.original.png before the first
+    /// overlay is applied so re-runs always composite onto the clean source.
     /// </summary>
     public static class CastThumbOverlay
     {
@@ -23,62 +26,75 @@ namespace Jellyfin.Plugin.Encora.Models
         private const string ThumbName = "thumb.png";
 
         /// <summary>
-        /// Extracts headshot URLs from a StageMedia response in cast order, up to <see cref="MaxAvatars"/>.
+        /// Resolves local on-disk headshot paths for up to <see cref="MaxAvatars"/> cast members
+        /// by looking each performer up in Jellyfin's own people library and reading their cached
+        /// primary image. Falls back gracefully to an empty list when people aren't cached yet
+        /// (first-ever refresh before Jellyfin has downloaded the headshots).
         /// </summary>
-        /// <param name="cast">The cast list from the Encora recording.</param>
-        /// <param name="headshots">StageMedia performer headshots keyed by performer ID.</param>
-        /// <returns>An ordered list of headshot URLs, at most <see cref="MaxAvatars"/> entries.</returns>
-        public static IReadOnlyList<string> GetHeadshotUrls(
+        /// <param name="cast">The recording's cast list.</param>
+        /// <param name="libraryManager">Jellyfin library manager used to find person items.</param>
+        /// <returns>Ordered list of local image file paths, at most <see cref="MaxAvatars"/> entries.</returns>
+        public static IReadOnlyList<string> GetLocalHeadshotPaths(
             IEnumerable<EncoraCastMember>? cast,
-            Collection<StageMediaPerformer>? headshots)
+            ILibraryManager libraryManager)
         {
-            if (cast == null || headshots == null || headshots.Count == 0)
+            if (cast == null)
             {
                 return Array.Empty<string>();
             }
 
-            var urls = new List<string>();
+            var paths = new List<string>();
             foreach (var member in cast)
             {
-                if (urls.Count >= MaxAvatars)
+                if (paths.Count >= MaxAvatars)
                 {
                     break;
                 }
 
-                var pid = member.Performer?.Id ?? 0;
-                if (pid <= 0)
+                var name = member.Performer?.Name;
+                if (string.IsNullOrWhiteSpace(name))
                 {
                     continue;
                 }
 
-                var match = headshots.FirstOrDefault(p => p.Id == pid);
-                if (!string.IsNullOrWhiteSpace(match?.Url))
+                var person = libraryManager.GetItemList(new InternalItemsQuery
                 {
-                    urls.Add(match.Url!);
+                    IncludeItemTypes = new[] { BaseItemKind.Person },
+                    Name = name,
+                    Limit = 1,
+                }).OfType<Person>().FirstOrDefault();
+
+                if (person == null)
+                {
+                    continue;
+                }
+
+                var imageInfo = person.GetImageInfo(ImageType.Primary, 0);
+                if (imageInfo?.Path != null && File.Exists(imageInfo.Path))
+                {
+                    paths.Add(imageInfo.Path);
                 }
             }
 
-            return urls;
+            return paths;
         }
 
         /// <summary>
-        /// Downloads headshots and composites them as a circular avatar stack onto thumb.png.
-        /// No-ops if no headshots are available or if thumb.png does not exist yet.
+        /// Reads cached headshot images and composites them as a circular avatar stack onto
+        /// thumb.png. No-ops if no local images are available or if thumb.png does not exist yet.
         /// </summary>
-        /// <param name="httpClientFactory">HTTP client factory for downloading headshots.</param>
         /// <param name="logger">Logger for diagnostics.</param>
         /// <param name="episodeDir">Directory containing the episode's thumb.png.</param>
-        /// <param name="headshotUrls">Ordered list of headshot image URLs to composite.</param>
+        /// <param name="localHeadshotPaths">Ordered list of local headshot file paths.</param>
         /// <param name="cancellationToken">Cancellation token.</param>
         /// <returns>A task representing the asynchronous overlay operation.</returns>
         public static async Task OverlayAsync(
-            IHttpClientFactory httpClientFactory,
             ILogger logger,
             string episodeDir,
-            IReadOnlyList<string> headshotUrls,
+            IReadOnlyList<string> localHeadshotPaths,
             CancellationToken cancellationToken)
         {
-            if (headshotUrls.Count == 0)
+            if (localHeadshotPaths.Count == 0)
             {
                 return;
             }
@@ -91,7 +107,7 @@ namespace Jellyfin.Plugin.Encora.Models
                 return;
             }
 
-            // Back up the original once so re-runs always composite onto clean source
+            // Back up the clean original once; subsequent runs composite from that backup
             if (!File.Exists(backupPath) && File.Exists(thumbPath))
             {
                 try
@@ -107,26 +123,23 @@ namespace Jellyfin.Plugin.Encora.Models
 
             var sourcePath = File.Exists(backupPath) ? backupPath : thumbPath;
 
-            // Download all headshots concurrently
-            var http = httpClientFactory.CreateClient();
-            var downloadTasks = headshotUrls.Select(async url =>
+            // Decode cached headshot bitmaps (synchronous file reads, no HTTP)
+            var headshotBitmaps = new List<SKBitmap>();
+            foreach (var path in localHeadshotPaths)
             {
                 try
                 {
-                    return await http.GetByteArrayAsync(new Uri(url), cancellationToken).ConfigureAwait(false);
+                    var bmp = SKBitmap.Decode(path);
+                    if (bmp != null)
+                    {
+                        headshotBitmaps.Add(bmp);
+                    }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    return null;
+                    logger.LogDebug(ex, "[Encora] [CastOverlay] Could not decode headshot {Path}, skipping", path);
                 }
-            });
-
-            var allBytes = await Task.WhenAll(downloadTasks).ConfigureAwait(false);
-            var headshotBitmaps = allBytes
-                .Where(b => b != null)
-                .Select(b => SKBitmap.Decode(b!))
-                .Where(bmp => bmp != null)
-                .ToList();
+            }
 
             if (headshotBitmaps.Count == 0)
             {
@@ -135,7 +148,7 @@ namespace Jellyfin.Plugin.Encora.Models
 
             try
             {
-                await CompositeAsync(logger, sourcePath, thumbPath, headshotBitmaps!, cancellationToken)
+                await CompositeAsync(logger, sourcePath, thumbPath, headshotBitmaps, cancellationToken)
                     .ConfigureAwait(false);
                 logger.LogInformation(
                     "[Encora] [CastOverlay] ✅ Overlaid {Count} cast avatars onto {Path}",
@@ -146,7 +159,7 @@ namespace Jellyfin.Plugin.Encora.Models
             {
                 foreach (var bmp in headshotBitmaps)
                 {
-                    bmp?.Dispose();
+                    bmp.Dispose();
                 }
             }
         }
@@ -176,12 +189,17 @@ namespace Jellyfin.Plugin.Encora.Models
                     var marginX = avatarSize / 2;
                     var marginY = avatarSize / 2;
 
-                    var imageInfo = new SKImageInfo(sourceBitmap.Width, sourceBitmap.Height, SKColorType.Rgba8888, SKAlphaType.Premul);
+                    var imageInfo = new SKImageInfo(
+                        sourceBitmap.Width,
+                        sourceBitmap.Height,
+                        SKColorType.Rgba8888,
+                        SKAlphaType.Premul);
+
                     using var surface = SKSurface.Create(imageInfo);
                     var canvas = surface.Canvas;
                     canvas.DrawBitmap(sourceBitmap, 0, 0);
 
-                    // Subtle drop-shadow behind the avatar stack
+                    // Subtle drop-shadow behind the avatar stack for legibility
                     var totalWidth = avatarSize + ((headshots.Count - 1) * step) + (borderWidth * 2);
                     using var shadowPaint = new SKPaint
                     {
@@ -189,6 +207,7 @@ namespace Jellyfin.Plugin.Encora.Models
                         MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, avatarSize * 0.3f),
                         IsAntialias = true,
                     };
+
                     float shadowPad = avatarSize * 0.15f;
                     var shadowRect = SKRect.Create(
                         marginX - borderWidth - shadowPad,
@@ -197,7 +216,7 @@ namespace Jellyfin.Plugin.Encora.Models
                         (avatarSize + (borderWidth * 2)) + (shadowPad * 2f));
                     canvas.DrawRoundRect(new SKRoundRect(shadowRect, avatarSize / 2f), shadowPaint);
 
-                    // Draw avatars right-to-left so leftmost (first cast member) is on top
+                    // Draw right-to-left so first cast member renders on top
                     for (int i = headshots.Count - 1; i >= 0; i--)
                     {
                         var headshot = headshots[i];
