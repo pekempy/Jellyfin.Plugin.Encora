@@ -184,15 +184,6 @@ namespace Jellyfin.Plugin.Encora.Providers
                     {
                         await CastThumbOverlay.OverlayAsync(
                             _logger, episodeDir!, sources, _httpClientFactory, cancellationToken).ConfigureAwait(false);
-
-                        // Tell Jellyfin the thumb file changed so it regenerates its resize cache
-                        var thumbPath = System.IO.Path.Combine(episodeDir!, "thumb.png");
-                        if (System.IO.File.Exists(thumbPath)
-                            && _libraryManager.FindByPath(info.Path, isFolder: false) is Episode existingEp)
-                        {
-                            existingEp.SetImagePath(MediaBrowser.Model.Entities.ImageType.Thumb, thumbPath);
-                            await _libraryManager.UpdateItemAsync(existingEp, existingEp.GetParent(), ItemUpdateType.ImageUpdate, cancellationToken).ConfigureAwait(false);
-                        }
                     }
                 }
             }
