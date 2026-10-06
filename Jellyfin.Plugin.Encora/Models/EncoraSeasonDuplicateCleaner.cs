@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -83,14 +84,14 @@ namespace Jellyfin.Plugin.Encora.Models
                     continue;
                 }
 
-                var series = libraryManager.GetItemById(group.Key.ParentId);
+                var series = group.Key.ParentId != Guid.Empty ? libraryManager.GetItemById(group.Key.ParentId) : null;
                 var scopePath = duplicates[0].Path ?? series?.Path;
                 if (string.IsNullOrWhiteSpace(scopePath) || !EncoraLibraryScope.IsPathInScope(libraryManager, scopePath, tvLibraryIds))
                 {
                     continue;
                 }
 
-                RemoveDuplicateSeasons(libraryManager, logger, series?.Name ?? group.Key.ParentId.ToString("N", CultureInfo.InvariantCulture), duplicates);
+                await RemoveDuplicateSeasonsAsync(libraryManager, logger, series?.Name ?? group.Key.ParentId.ToString("N", CultureInfo.InvariantCulture), duplicates, cancellationToken).ConfigureAwait(false);
             }
 
             // Seasons can also end up orphaned outside any name-matching group - e.g. a Season that was
@@ -109,8 +110,8 @@ namespace Jellyfin.Plugin.Encora.Models
                     continue;
                 }
 
-                var series = libraryManager.GetItemById(orphan.ParentId);
-                if (string.IsNullOrWhiteSpace(series?.Path) || !EncoraLibraryScope.IsPathInScope(libraryManager, series.Path, tvLibraryIds))
+                var series = orphan.ParentId != Guid.Empty ? libraryManager.GetItemById(orphan.ParentId) : null;
+                if (series != null && !string.IsNullOrWhiteSpace(series.Path) && !EncoraLibraryScope.IsPathInScope(libraryManager, series.Path, tvLibraryIds))
                 {
                     continue;
                 }
@@ -119,7 +120,7 @@ namespace Jellyfin.Plugin.Encora.Models
                 logger.LogWarning(
                     "[Encora] 🧹 Removed empty orphaned Season '{SeasonName}' under series '{SeriesName}' (no episodes, no on-disk folder)",
                     orphan.Name,
-                    series.Name);
+                    series?.Name ?? "Unknown");
             }
 
             // Same-path / different-name duplicates: Jellyfin's NfoParser can create a generic "Season N"
@@ -139,7 +140,7 @@ namespace Jellyfin.Plugin.Encora.Models
 
                 var members = pathGroup.ToList();
 
-                var series = libraryManager.GetItemById(pathGroup.Key.ParentId);
+                var series = pathGroup.Key.ParentId != Guid.Empty ? libraryManager.GetItemById(pathGroup.Key.ParentId) : null;
                 var scopePath = members[0].Path;
                 if (string.IsNullOrWhiteSpace(series?.Path) || string.IsNullOrWhiteSpace(scopePath)
                     || !EncoraLibraryScope.IsPathInScope(libraryManager, scopePath, tvLibraryIds))
@@ -166,13 +167,18 @@ namespace Jellyfin.Plugin.Encora.Models
                     foreach (var episode in episodes)
                     {
                         episode.SetParent(keeper);
+                        episode.ParentId = keeper.Id;
                         episode.SeasonId = keeper.Id;
                         episode.SeasonName = keeper.Name;
                         episode.ParentIndexNumber = keeper.IndexNumber;
                         await libraryManager.UpdateItemAsync(episode, keeper, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
                     }
 
-                    libraryManager.DeleteItem(loser, new DeleteOptions { DeleteFileLocation = false });
+                    if (string.IsNullOrWhiteSpace(loser.Path) || !Directory.Exists(loser.Path))
+                    {
+                        libraryManager.DeleteItem(loser, new DeleteOptions { DeleteFileLocation = false });
+                    }
+
                     logger.LogWarning(
                         "[Encora] 🧩 Removed same-path duplicate Season '{LoserName}' (generic={IsGeneric}) under series '{SeriesName}' — kept '{KeeperName}' (path: {Path})",
                         loser.Name,
@@ -186,7 +192,7 @@ namespace Jellyfin.Plugin.Encora.Models
             return;
         }
 
-        private static void RemoveDuplicateSeasons(ILibraryManager libraryManager, ILogger logger, string seriesName, List<Season> duplicates)
+        private static async Task RemoveDuplicateSeasonsAsync(ILibraryManager libraryManager, ILogger logger, string seriesName, List<Season> duplicates, CancellationToken cancellationToken)
         {
             var withCounts = duplicates
                 .Select(season => (Season: season, EpisodeCount: CountEpisodes(libraryManager, season)))
@@ -194,29 +200,38 @@ namespace Jellyfin.Plugin.Encora.Models
                 .ThenBy(x => x.Season.Id)
                 .ToList();
 
-            var keeper = withCounts[0];
+            var keeper = withCounts[0].Season;
 
             foreach (var loser in withCounts.Skip(1))
             {
-                foreach (var episode in libraryManager.GetItemList(new InternalItemsQuery
+                var loserEpisodes = libraryManager.GetItemList(new InternalItemsQuery
                 {
                     ParentId = loser.Season.Id,
                     IncludeItemTypes = new[] { BaseItemKind.Episode },
                     Recursive = true
-                }))
+                }).OfType<Episode>().ToList();
+
+                foreach (var episode in loserEpisodes)
                 {
-                    libraryManager.DeleteItem(episode, new DeleteOptions { DeleteFileLocation = false });
+                    episode.SetParent(keeper);
+                    episode.ParentId = keeper.Id;
+                    episode.SeasonId = keeper.Id;
+                    episode.SeasonName = keeper.Name;
+                    episode.ParentIndexNumber = keeper.IndexNumber;
+                    await libraryManager.UpdateItemAsync(episode, keeper, ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
                 }
 
-                libraryManager.DeleteItem(loser.Season, new DeleteOptions { DeleteFileLocation = false });
+                if (string.IsNullOrWhiteSpace(loser.Season.Path) || !Directory.Exists(loser.Season.Path))
+                {
+                    libraryManager.DeleteItem(loser.Season, new DeleteOptions { DeleteFileLocation = false });
+                }
 
                 logger.LogWarning(
-                    "[Encora] 🧩 Removed duplicate Season '{SeasonName}' ({EpisodeCount} episodes) under series '{SeriesName}' - kept the Season with {KeeperEpisodeCount} episodes instead (Id {KeeperId})",
+                    "[Encora] 🧩 Merged duplicate Season '{SeasonName}' ({EpisodeCount} episodes) under series '{SeriesName}' into Season with Id {KeeperId}",
                     loser.Season.Name,
                     loser.EpisodeCount,
                     seriesName,
-                    keeper.EpisodeCount,
-                    keeper.Season.Id.ToString("N", CultureInfo.InvariantCulture));
+                    keeper.Id.ToString("N", CultureInfo.InvariantCulture));
             }
         }
 
