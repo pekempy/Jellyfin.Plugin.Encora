@@ -8,9 +8,9 @@
     <Nullable>enable</Nullable>
     <AnalysisMode>AllEnabledByDefault</AnalysisMode>
     <CodeAnalysisRuleSet>../jellyfin.ruleset</CodeAnalysisRuleSet>
-    <Version>1.2.3.7</Version>
-    <AssemblyVersion>1.2.3.7</AssemblyVersion>
-    <FileVersion>1.2.3.7</FileVersion>
+    <Version>1.2.4.2</Version>
+    <AssemblyVersion>1.2.4.2</AssemblyVersion>
+    <FileVersion>1.2.4.2</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>

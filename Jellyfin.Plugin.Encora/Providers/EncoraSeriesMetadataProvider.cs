@@ -188,6 +188,7 @@ namespace Jellyfin.Plugin.Encora.Providers
                 if (File.Exists(posterPath))
                 {
                     EncoraRecordingApplier.MarkPosterLocked(series);
+                    series.SetImagePath(ImageType.Primary, posterPath);
                 }
             }
 
