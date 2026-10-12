@@ -180,13 +180,13 @@ namespace Jellyfin.Plugin.Encora.ScheduledTasks
                 return;
             }
 
-            bool anyChanged = false;
-
+            // Update any changed headshot images in Jellyfin's person library first.
+            // This loop only touches performers that already have a local cached image.
             foreach (var sm in stageMedia)
             {
-                if (string.IsNullOrWhiteSpace(sm.Url))
+                if (string.IsNullOrWhiteSpace(sm.Url) || !StageMediaCircuitBreaker.IsAvailable(_logger))
                 {
-                    continue;
+                    break;
                 }
 
                 var castMember = recording.Cast?.FirstOrDefault(c => c.Performer?.Id == sm.Id);
@@ -209,11 +209,6 @@ namespace Jellyfin.Plugin.Encora.ScheduledTasks
                     continue;
                 }
 
-                if (!StageMediaCircuitBreaker.IsAvailable(_logger))
-                {
-                    break;
-                }
-
                 var newBytes = await CastThumbOverlay.FetchIfChangedAsync(
                     http, imageInfo.Path, sm.Url, _logger, cancellationToken).ConfigureAwait(false);
 
@@ -226,7 +221,6 @@ namespace Jellyfin.Plugin.Encora.ScheduledTasks
                             "[Encora] [CastImageRefresh] Updated headshot for {Name} on episode {Episode}",
                             name,
                             episode.Name);
-                        anyChanged = true;
                     }
                     catch (Exception ex)
                     {
@@ -235,23 +229,28 @@ namespace Jellyfin.Plugin.Encora.ScheduledTasks
                 }
             }
 
-            if (anyChanged)
+            // Always attempt to (re)composite — GetHeadshotSources falls back to StageMedia remote
+            // URLs when no local person image exists, so this also handles first-time application
+            // when headshots weren't available during the initial metadata refresh.
+            var sources = CastThumbOverlay.GetHeadshotSources(
+                recording.Cast, _libraryManager, stageMedia);
+
+            if (sources.Count > 0)
             {
-                var sources = CastThumbOverlay.GetHeadshotSources(
-                    recording.Cast, _libraryManager, stageMedia);
+                await CastThumbOverlay.OverlayAsync(
+                    _logger, dir, episode.Path, sources, _httpClientFactory, cancellationToken).ConfigureAwait(false);
 
-                if (sources.Count > 0)
-                {
-                    await CastThumbOverlay.OverlayAsync(
-                        _logger, dir, episode.Path, sources, _httpClientFactory, cancellationToken).ConfigureAwait(false);
-
-                    _logger.LogInformation(
-                        "[Encora] [CastImageRefresh] Recomposited thumbnail for {Episode}", episode.Name);
-                }
+                _logger.LogInformation(
+                    "[Encora] [CastImageRefresh] (Re)composited thumbnail for {Episode}", episode.Name);
             }
             else
             {
+                // No headshots available from StageMedia or library — mark as checked so we
+                // don't hammer the API, but try again after the normal staleness interval.
                 await CastThumbOverlay.SaveOverlayStateAsync(dir, episode.Path, cancellationToken).ConfigureAwait(false);
+                _logger.LogInformation(
+                    "[Encora] [CastImageRefresh] No headshot sources available for {Episode} — will retry after staleness interval.",
+                    episode.Name);
             }
         }
     }
