@@ -526,7 +526,7 @@ namespace Jellyfin.Plugin.Encora.Models
                         return;
                     }
 
-                    var avatarSize = Math.Clamp((int)(sourceBitmap.Height * 0.16), 96, 192);
+                    var avatarSize = Math.Max(96, (int)(sourceBitmap.Height * 0.16));
                     var borderWidth = Math.Max(3, avatarSize / 20);
                     var step = (int)(avatarSize * 0.70);
                     var marginX = avatarSize / 2;
