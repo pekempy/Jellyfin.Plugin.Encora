@@ -74,5 +74,11 @@ namespace Jellyfin.Plugin.Encora.Providers
         /// </summary>
         [JsonPropertyName("metadata")]
         public EncoraMetadata? Metadata { get; set; }
+
+        /// <summary>
+        /// Gets or sets the subtitles included in the collection response, when available.
+        /// </summary>
+        [JsonPropertyName("subtitles")]
+        public IReadOnlyList<EncoraSubtitles>? Subtitles { get; set; }
     }
 }

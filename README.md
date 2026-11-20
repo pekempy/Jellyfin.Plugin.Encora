@@ -63,7 +63,7 @@ If no Encora ID is found on a Movie, it falls back to parsing `.nfo` files (e.g.
 
 Saving automatically adds Encora (and StageMedia, for Movies) to any library you've enabled/scoped, without unchecking anything else. To restrict a library to *only* Encora/StageMedia, edit it manually under **Manage library** → uncheck other downloaders/fetchers → check **Save artwork into media folders** → **Scan library** (or **Replace all metadata** if it already has metadata from elsewhere).
 
-Subtitles aren't downloaded automatically during a metadata refresh - "Encora" shows up as a normal subtitle provider (like OpenSubtitles) under each library's **Manage Library → Subtitles** tab, so it's used by Jellyfin's own subtitle search and the "Download missing subtitles" task.
+Subtitles are still available through Jellyfin's normal Encora subtitle provider under each library's **Manage Library → Subtitles** tab. For recordings in the collection cache, Jellyfin uses the subtitle list bundled with the collection response; recordings not in that cache (or older API responses without the list) fall back to the per-recording subtitle endpoint. The manual subtitle search and "Download missing subtitles" task remain supported.
 
 ---
 

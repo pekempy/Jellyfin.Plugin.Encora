@@ -77,10 +77,30 @@ namespace Jellyfin.Plugin.Encora.Providers
                 return Array.Empty<RemoteSubtitleInfo>();
             }
 
-            List<EncoraSubtitles>? subtitles;
+            IReadOnlyList<EncoraSubtitles>? subtitles;
             try
             {
-                subtitles = await EncoraRecordingApplier.FetchSubtitlesAsync(_httpClientFactory, _logger, encoraId, cancellationToken).ConfigureAwait(false);
+                if (EncoraCollectionCache.TryGet(encoraId, out var cachedRecording))
+                {
+                    if (cachedRecording?.Subtitles is not null)
+                    {
+                        subtitles = cachedRecording.Subtitles;
+                    }
+                    else if (cachedRecording?.Metadata?.HasSubtitles == false)
+                    {
+                        return Array.Empty<RemoteSubtitleInfo>();
+                    }
+                    else
+                    {
+                        // Preserve live search for old API responses that report subtitles without embedding them.
+                        subtitles = await EncoraRecordingApplier.FetchSubtitlesAsync(_httpClientFactory, _logger, encoraId, cancellationToken).ConfigureAwait(false);
+                    }
+                }
+                else
+                {
+                    // Recordings outside the cached collection still use the manual per-recording endpoint.
+                    subtitles = await EncoraRecordingApplier.FetchSubtitlesAsync(_httpClientFactory, _logger, encoraId, cancellationToken).ConfigureAwait(false);
+                }
             }
             catch (Exception ex)
             {
